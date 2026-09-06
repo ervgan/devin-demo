@@ -144,17 +144,17 @@ describe('rejectRefund', () => {
 });
 
 describe('requestRefundInformation', () => {
-  it('moves the refund into review and records the question', async () => {
-    const refundId = await refundIdByRef('RFD-5001');
+  it('lets the second approver ask before completing a high-value approval', async () => {
+    const refundId = await refundIdByRef('RFD-5004');
     const result = await requestRefundInformation(
       db,
-      agent,
+      otherAnalyst,
       refundId,
       'Please attach the merchant receipt.',
     );
 
     expect(result.allowed).toBe(true);
-    expect((await refundByRef('RFD-5001')).status).toBe('under_review');
+    expect((await refundByRef('RFD-5004')).status).toBe('under_review');
     const events = await db
       .select()
       .from(refundEvents)
@@ -169,8 +169,23 @@ describe('requestRefundInformation', () => {
   });
 
   it('denies an empty request', async () => {
+    const refundId = await refundIdByRef('RFD-5004');
+    const result = await requestRefundInformation(db, otherAnalyst, refundId, '');
+    expect(result.allowed).toBe(false);
+  });
+
+  it('denies a refund that needs only one approval', async () => {
     const refundId = await refundIdByRef('RFD-5001');
-    const result = await requestRefundInformation(db, agent, refundId, '');
+    const result = await requestRefundInformation(db, agent, refundId, 'Any receipt?');
+
+    expect(result.allowed).toBe(false);
+    expect((await refundByRef('RFD-5001')).status).toBe('requested');
+  });
+
+  it('denies the approver who recorded the first approval', async () => {
+    const refundId = await refundIdByRef('RFD-5004');
+    const result = await requestRefundInformation(db, analyst, refundId, 'Any receipt?');
+
     expect(result.allowed).toBe(false);
   });
 });

@@ -109,12 +109,38 @@ export function canRejectRefund(
   return all(mayRejectRefund(actor, snapshot), requireReason(reason, 'reject the refund'));
 }
 
-/** Whether the actor could ask for more information, ignoring the question. */
+/**
+ * Whether the actor could ask for more information, ignoring the question.
+ * Only the second approver of a refund that needs two approvals may ask: the
+ * request exists so the person completing a high-value approval can challenge
+ * it, so the first approver cannot raise it against their own approval.
+ */
 export function mayRequestRefundInformation(actor: Actor, snapshot: RefundSnapshot): RuleResult {
-  return all(
+  const base = all(
     requireRole(actor, [...REFUND_DECIDER_ROLES], 'request more information on a refund'),
     requireOpenRefund(snapshot, 'have information requested'),
   );
+  if (!base.allowed) return base;
+
+  if (!requiresSecondApproval(snapshot)) {
+    return deny(
+      `Refund ${snapshot.refundRef} is below ${formatMoney(SECOND_APPROVER_THRESHOLD_CENTS, snapshot.currency)}, so it takes a single approval and has no second approver to ask.`,
+    );
+  }
+
+  if (!isAwaitingSecondApproval(snapshot)) {
+    return deny(
+      `Refund ${snapshot.refundRef} is not awaiting a second approval, so there is no second approver to request information.`,
+    );
+  }
+
+  if (actor.id === snapshot.firstApproverId) {
+    return deny(
+      `You recorded the first approval on ${snapshot.refundRef}; only the second approver may request more information.`,
+    );
+  }
+
+  return allow(`Refund ${snapshot.refundRef} may have more information requested before its second approval.`);
 }
 
 export function canRequestRefundInformation(

@@ -163,28 +163,41 @@ describe('canRejectRefund', () => {
 });
 
 describe('mayRequestRefundInformation', () => {
-  it('allows a decider on an open refund', () => {
-    expect(mayRequestRefundInformation(agent, snapshot()).allowed).toBe(true);
+  it('allows the second approver of a refund awaiting its second approval', () => {
+    expect(mayRequestRefundInformation(otherAnalyst, AWAITING_SECOND).allowed).toBe(true);
+  });
+
+  it('denies the approver who recorded the first approval', () => {
+    expect(mayRequestRefundInformation(analyst, AWAITING_SECOND).allowed).toBe(false);
+  });
+
+  it('denies a refund below the second-approver threshold', () => {
+    expect(mayRequestRefundInformation(agent, snapshot()).allowed).toBe(false);
+  });
+
+  it('denies a high-value refund with no first approval yet', () => {
+    expect(mayRequestRefundInformation(agent, HIGH_VALUE).allowed).toBe(false);
   });
 
   it('denies a decided refund', () => {
-    expect(mayRequestRefundInformation(agent, snapshot({ status: 'rejected' })).allowed).toBe(
-      false,
-    );
+    expect(
+      mayRequestRefundInformation(otherAnalyst, snapshot({ ...AWAITING_SECOND, status: 'rejected' }))
+        .allowed,
+    ).toBe(false);
   });
 });
 
 describe('canRequestRefundInformation', () => {
-  it('allows a decider who says what is needed', () => {
-    expect(canRequestRefundInformation(agent, snapshot(), REASON).allowed).toBe(true);
+  it('allows a second approver who says what is needed', () => {
+    expect(canRequestRefundInformation(otherAnalyst, AWAITING_SECOND, REASON).allowed).toBe(true);
   });
 
   it('denies an empty request', () => {
-    expect(canRequestRefundInformation(agent, snapshot(), ' ').allowed).toBe(false);
+    expect(canRequestRefundInformation(otherAnalyst, AWAITING_SECOND, ' ').allowed).toBe(false);
   });
 
   it('denies the wrong role', () => {
-    expect(canRequestRefundInformation(engineer, snapshot(), REASON).allowed).toBe(false);
+    expect(canRequestRefundInformation(engineer, AWAITING_SECOND, REASON).allowed).toBe(false);
   });
 });
 
