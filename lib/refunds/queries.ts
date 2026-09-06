@@ -30,8 +30,8 @@ const PENDING_STATUSES: readonly RefundStatus[] = ['requested', 'under_review', 
 
 export const AMOUNT_BANDS = {
   small: { label: 'Under €100', min: 0, max: 10_000 },
-  medium: { label: '€100 – €1,000', min: 10_000, max: SECOND_APPROVER_THRESHOLD_CENTS },
-  large: { label: 'Over €1,000', min: SECOND_APPROVER_THRESHOLD_CENTS, max: null },
+  medium: { label: '€100 – €999.99', min: 10_000, max: SECOND_APPROVER_THRESHOLD_CENTS },
+  large: { label: '€1,000 and over', min: SECOND_APPROVER_THRESHOLD_CENTS, max: null },
 } as const;
 
 export type AmountBand = keyof typeof AMOUNT_BANDS;
