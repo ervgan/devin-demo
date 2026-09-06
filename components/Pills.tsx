@@ -1,4 +1,13 @@
-import { STAGE_LABELS, type CaseStage, type DocumentStatus, type RiskRating } from '@/lib/rules/types';
+import {
+  KYC_STATUS_LABELS,
+  REFUND_STATUS_LABELS,
+  STAGE_LABELS,
+  type CaseStage,
+  type DocumentStatus,
+  type KycStatus,
+  type RefundStatus,
+  type RiskRating,
+} from '@/lib/rules/types';
 
 export function StagePill({ stage }: { stage: CaseStage }) {
   return <span className={`pill stage-${stage}`}>{STAGE_LABELS[stage]}</span>;
@@ -14,6 +23,15 @@ export function DocumentStatusPill({ status }: { status: DocumentStatus }) {
       {status === 'verified' ? 'Verified' : 'Missing'}
     </span>
   );
+}
+
+export function RefundStatusPill({ status }: { status: RefundStatus }) {
+  return <span className={`pill refund-${status}`}>{REFUND_STATUS_LABELS[status]}</span>;
+}
+
+/** Informational only: refunds display a customer's KYC position, never act on it. */
+export function KycStatusPill({ status }: { status: KycStatus }) {
+  return <span className={`pill kyc-${status}`}>{KYC_STATUS_LABELS[status]}</span>;
 }
 
 export function FlagStatePill({ enabled }: { enabled: boolean }) {

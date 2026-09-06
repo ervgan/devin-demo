@@ -12,6 +12,8 @@ import type {
   DocumentStatus,
   Environment,
   KycStatus,
+  RefundChannel,
+  RefundEventType,
   RefundReasonCode,
   RefundStatus,
   RiskRating,
@@ -121,6 +123,28 @@ export const kycCaseEvents = sqliteTable(
   }),
 );
 
+/** The original payment a refund is raised against. */
+export const transactions = sqliteTable(
+  'transactions',
+  {
+    id: text('id').primaryKey(),
+    transactionRef: text('transaction_ref').notNull(),
+    customerId: text('customer_id')
+      .notNull()
+      .references(() => customers.id),
+    /** Minor units, so no floating point money. */
+    amountCents: integer('amount_cents').notNull(),
+    currency: text('currency').notNull(),
+    channel: text('channel').$type<RefundChannel>().notNull(),
+    description: text('description').notNull(),
+    occurredAt: timestampCol('occurred_at').notNull(),
+  },
+  (table) => ({
+    transactionRefIdx: uniqueIndex('transactions_ref_idx').on(table.transactionRef),
+    customerIdx: index('transactions_customer_idx').on(table.customerId),
+  }),
+);
+
 export const refundRequests = sqliteTable(
   'refund_requests',
   {
@@ -129,10 +153,14 @@ export const refundRequests = sqliteTable(
     customerId: text('customer_id')
       .notNull()
       .references(() => customers.id),
+    transactionId: text('transaction_id')
+      .notNull()
+      .references(() => transactions.id),
     /** Minor units, so no floating point money. */
     amountCents: integer('amount_cents').notNull(),
     currency: text('currency').notNull(),
     reasonCode: text('reason_code').$type<RefundReasonCode>().notNull(),
+    channel: text('channel').$type<RefundChannel>().notNull(),
     status: text('status').$type<RefundStatus>().notNull(),
     requestedById: text('requested_by_id')
       .notNull()
@@ -146,6 +174,29 @@ export const refundRequests = sqliteTable(
   (table) => ({
     refundRefIdx: uniqueIndex('refund_requests_ref_idx').on(table.refundRef),
     customerIdx: index('refund_requests_customer_idx').on(table.customerId),
+    statusIdx: index('refund_requests_status_idx').on(table.status),
+  }),
+);
+
+/** Refund timeline: workflow events, distinct from the platform-wide audit log. */
+export const refundEvents = sqliteTable(
+  'refund_events',
+  {
+    id: text('id').primaryKey(),
+    refundId: text('refund_id')
+      .notNull()
+      .references(() => refundRequests.id),
+    actorId: text('actor_id')
+      .notNull()
+      .references(() => users.id),
+    type: text('type').$type<RefundEventType>().notNull(),
+    fromStatus: text('from_status').$type<RefundStatus>(),
+    toStatus: text('to_status').$type<RefundStatus>(),
+    note: text('note'),
+    createdAt: timestampCol('created_at').notNull(),
+  },
+  (table) => ({
+    refundIdx: index('refund_events_refund_idx').on(table.refundId),
   }),
 );
 
@@ -194,7 +245,9 @@ export type KycCase = typeof kycCases.$inferSelect;
 export type KycDocument = typeof kycDocuments.$inferSelect;
 export type KycRiskFactor = typeof kycRiskFactors.$inferSelect;
 export type KycCaseEvent = typeof kycCaseEvents.$inferSelect;
+export type Transaction = typeof transactions.$inferSelect;
 export type RefundRequest = typeof refundRequests.$inferSelect;
+export type RefundEvent = typeof refundEvents.$inferSelect;
 export type FeatureFlag = typeof featureFlags.$inferSelect;
 export type AuditLogEntry = typeof auditLog.$inferSelect;
 
@@ -205,7 +258,9 @@ export const schema = {
   kycDocuments,
   kycRiskFactors,
   kycCaseEvents,
+  transactions,
   refundRequests,
+  refundEvents,
   featureFlags,
   auditLog,
 };

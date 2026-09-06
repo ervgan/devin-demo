@@ -241,6 +241,35 @@ export async function getCaseDetail(caseId: string, reader: Actor): Promise<Case
   };
 }
 
+export interface CustomerKycSummary {
+  caseId: string;
+  caseRef: string;
+  stage: CaseStage;
+  riskRating: RiskRating;
+}
+
+/**
+ * The KYC position of a customer, for other modules to display. Read-only:
+ * nothing outside KYC decides anything from it.
+ */
+export async function getKycSummaryForCustomer(
+  customerId: string,
+): Promise<CustomerKycSummary | null> {
+  const [row] = await getDb()
+    .select({
+      caseId: kycCases.id,
+      caseRef: kycCases.caseRef,
+      stage: kycCases.stage,
+      riskRating: kycCases.riskRating,
+    })
+    .from(kycCases)
+    .where(eq(kycCases.customerId, customerId))
+    .orderBy(desc(kycCases.modifiedAt))
+    .limit(1);
+
+  return row ?? null;
+}
+
 export function outstandingDocumentCount(snapshot: CaseSnapshot): number {
   return missingDocuments(snapshot).length;
 }
