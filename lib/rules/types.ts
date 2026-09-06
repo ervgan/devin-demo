@@ -53,6 +53,7 @@ export const CASE_EVENT_TYPES = [
   'stage_advanced',
   'information_requested',
   'reviewer_assigned',
+  'document_verified',
   'case_approved',
   'case_rejected',
 ] as const;
