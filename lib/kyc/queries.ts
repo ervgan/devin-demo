@@ -180,7 +180,7 @@ export async function getCaseDetail(caseId: string, reader: Actor): Promise<Case
       .innerJoin(users, eq(kycCaseEvents.actorId, users.id))
       .where(eq(kycCaseEvents.caseId, caseId))
       .orderBy(desc(kycCaseEvents.createdAt)),
-    canViewAuditHistory(reader).allowed
+    canViewAuditHistory(reader, { domain: 'kyc' }).allowed
       ? listAuditEntriesForEntity(db, KYC_ENTITY_TYPE, caseId)
       : Promise.resolve<AuditEntryView[]>([]),
   ]);

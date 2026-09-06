@@ -54,7 +54,7 @@ export default async function KycCasePage({ params, searchParams }: PageProps) {
   const reject = mayRejectCase(actor, detail.snapshot);
   const information = mayRequestInformation(actor, detail.snapshot);
   const assignment = mayAssignReviewer(actor, detail.snapshot);
-  const auditAccess = canViewAuditHistory(actor);
+  const auditAccess = canViewAuditHistory(actor, { domain: 'kyc' });
   const upcoming = nextStage(detail.stage);
 
   return (

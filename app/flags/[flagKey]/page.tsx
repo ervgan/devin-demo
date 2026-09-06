@@ -37,7 +37,7 @@ export default async function FlagDetailPage({ params, searchParams }: PageProps
   if (!flag) notFound();
 
   const editing = mayEditFlags(actor);
-  const auditAccess = canViewAuditHistory(actor);
+  const auditAccess = canViewAuditHistory(actor, { domain: 'flags' });
   const returnTo = `/flags/${encodeURIComponent(flag.key)}`;
 
   return (
