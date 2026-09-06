@@ -2,7 +2,13 @@ import { formatMoney } from './money';
 import { requireReason } from './reasons';
 import { requireRole } from './roles';
 import { all, allow, deny, type RuleResult } from './result';
-import { REFUND_STATUS_LABELS, type Actor, type RefundStatus } from './types';
+import {
+  KYC_STATUS_LABELS,
+  REFUND_STATUS_LABELS,
+  type Actor,
+  type KycStatus,
+  type RefundStatus,
+} from './types';
 
 /**
  * Refunds at or above this value need a second approver, and that approver must
@@ -23,6 +29,20 @@ export interface RefundSnapshot extends RefundApprovalState {
   refundRef: string;
   currency: string;
   requestedById: string;
+}
+
+/** When on, a refund may only be approved for a customer whose KYC case is approved. */
+export const REQUIRE_KYC_APPROVAL_FLAG = 'refunds.require_kyc_approval';
+
+/**
+ * What the approval decision needs beyond the refund itself: the flag value in
+ * the running environment and the customer's KYC position. Loaded by the caller
+ * and passed in, so the rule stays pure and the refunds module never reads the
+ * flags table itself.
+ */
+export interface RefundApprovalContext {
+  requireKycApproval: boolean;
+  customerKycStatus: KycStatus;
 }
 
 /** Roles that may decide a refund at all. */
@@ -58,12 +78,50 @@ function requireOpenRefund(snapshot: RefundSnapshot, activity: string): RuleResu
 }
 
 /**
+ * The KYC gate on approval. Derived on every read, never stored: the refund
+ * keeps its own status, and a blocked refund unblocks the moment the customer's
+ * case is approved or the flag is turned off. The list badge, the detail banner
+ * and the approval denial all render this one reason.
+ */
+export function requireCustomerKycApproved(
+  snapshot: RefundSnapshot,
+  context: RefundApprovalContext,
+): RuleResult {
+  if (!context.requireKycApproval) {
+    return allow(`${REQUIRE_KYC_APPROVAL_FLAG} is off; KYC does not gate refund approval.`);
+  }
+  if (context.customerKycStatus !== 'approved') {
+    return deny(
+      `Refund ${snapshot.refundRef} cannot be approved: the customer's KYC is ${KYC_STATUS_LABELS[context.customerKycStatus].toLowerCase()}, and ${REQUIRE_KYC_APPROVAL_FLAG} requires an approved KYC case.`,
+    );
+  }
+  return allow(`The customer's KYC is approved.`);
+}
+
+/**
+ * The KYC denial when the refund is still decidable and the gate is what stops
+ * approval; null otherwise. Callers render its reason as the blocked banner.
+ */
+export function refundKycBlock(
+  snapshot: RefundSnapshot,
+  context: RefundApprovalContext,
+): RuleResult | null {
+  if (isTerminalRefundStatus(snapshot.status) || snapshot.status === 'approved') return null;
+  const gate = requireCustomerKycApproved(snapshot, context);
+  return gate.allowed ? null : gate;
+}
+
+/**
  * The single approval decision for a refund. Every caller — the UI button, the
  * message it shows and the service that writes the decision — uses this one
  * result rather than deriving eligibility for itself, so future eligibility
  * rules are added here and nowhere else.
  */
-export function canApproveRefund(actor: Actor, snapshot: RefundSnapshot): RuleResult {
+export function canApproveRefund(
+  actor: Actor,
+  snapshot: RefundSnapshot,
+  context: RefundApprovalContext,
+): RuleResult {
   const base = all(
     requireRole(actor, [...REFUND_DECIDER_ROLES], 'decide a refund'),
     requireOpenRefund(snapshot, 'be approved'),
@@ -73,6 +131,9 @@ export function canApproveRefund(actor: Actor, snapshot: RefundSnapshot): RuleRe
   if (snapshot.status === 'approved') {
     return deny(`Refund ${snapshot.refundRef} is already approved and is awaiting settlement.`);
   }
+
+  const kycGate = requireCustomerKycApproved(snapshot, context);
+  if (!kycGate.allowed) return kycGate;
 
   if (isAwaitingSecondApproval(snapshot) && actor.id === snapshot.firstApproverId) {
     return deny(

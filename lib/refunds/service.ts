@@ -1,7 +1,7 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { recordAuditEntriesSync } from '@/lib/audit';
 import type { AppDatabase } from '@/lib/db/client';
-import { refundEvents, refundRequests } from '@/lib/db/schema';
+import { customers, refundEvents, refundRequests } from '@/lib/db/schema';
 import {
   canAddRefundNote,
   canApproveRefund,
@@ -10,35 +10,39 @@ import {
   deny,
   isAwaitingSecondApproval,
   requiresSecondApproval,
+  type RefundApprovalContext,
   type RefundSnapshot,
   type RuleResult,
 } from '@/lib/rules';
-import { REFUND_ENTITY_TYPE } from './queries';
+import { loadRefundApprovalContext, REFUND_ENTITY_TYPE } from './queries';
 import type { Actor, RefundEventType, RefundStatus } from '@/lib/rules/types';
 
 /**
  * Applies refund decisions. Every decision here is delegated to lib/rules; this
- * module only loads state, persists the outcome and writes the audit entry. It
- * deliberately reads nothing about the customer's KYC position.
+ * module only loads state, persists the outcome and writes the audit entry.
  */
 
 interface LoadedRefund {
   id: string;
   modifiedAt: Date;
   snapshot: RefundSnapshot;
+  approvalContext: RefundApprovalContext;
 }
 
 async function loadRefund(db: AppDatabase, refundId: string): Promise<LoadedRefund | null> {
-  const [row] = await db
-    .select()
+  const [found] = await db
+    .select({ refund: refundRequests, customerKycStatus: customers.kycStatus })
     .from(refundRequests)
+    .innerJoin(customers, eq(refundRequests.customerId, customers.id))
     .where(eq(refundRequests.id, refundId))
     .limit(1);
-  if (!row) return null;
+  if (!found) return null;
+  const row = found.refund;
 
   return {
     id: row.id,
     modifiedAt: row.modifiedAt,
+    approvalContext: await loadRefundApprovalContext(db, found.customerKycStatus),
     snapshot: {
       refundRef: row.refundRef,
       status: row.status,
@@ -145,7 +149,7 @@ export async function approveRefund(
   const loaded = await loadRefund(db, refundId);
   if (!loaded) return deny(REFUND_NOT_FOUND);
 
-  const decision = canApproveRefund(actor, loaded.snapshot);
+  const decision = canApproveRefund(actor, loaded.snapshot, loaded.approvalContext);
   if (!decision.allowed) return decision;
 
   const secondApprovalOutstanding = isAwaitingSecondApproval(loaded.snapshot);

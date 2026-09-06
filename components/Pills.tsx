@@ -29,7 +29,6 @@ export function RefundStatusPill({ status }: { status: RefundStatus }) {
   return <span className={`pill refund-${status}`}>{REFUND_STATUS_LABELS[status]}</span>;
 }
 
-/** Informational only: refunds display a customer's KYC position, never act on it. */
 export function KycStatusPill({ status }: { status: KycStatus }) {
   return <span className={`pill kyc-${status}`}>{KYC_STATUS_LABELS[status]}</span>;
 }

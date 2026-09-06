@@ -201,6 +201,12 @@ export default async function RefundsPage({ searchParams }: { searchParams: Sear
                       <span className="pill">Awaiting 2nd approval</span>
                     </>
                   ) : null}
+                  {item.blockedByKyc ? (
+                    <>
+                      {' '}
+                      <span className="pill kyc-rejected">Blocked: KYC not approved</span>
+                    </>
+                  ) : null}
                 </td>
                 <td className="muted">{item.requestedByName}</td>
                 <td className="muted">{formatDateTime(item.modifiedAt)}</td>
