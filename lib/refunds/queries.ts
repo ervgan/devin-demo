@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, lt, ne, type SQL } from 'drizzle-orm';
-import { getDb } from '@/lib/db/client';
+import { getDb, type AppDatabase, type DatabaseWriter } from '@/lib/db/client';
 import {
   customers,
   refundEvents,
@@ -8,11 +8,15 @@ import {
   users,
 } from '@/lib/db/schema';
 import { listAuditEntriesForEntity, type AuditEntryView } from '@/lib/audit';
+import { isFlagEnabledSync } from '@/lib/flags/queries';
 import { getKycSummaryForCustomer, type CustomerKycSummary } from '@/lib/kyc/queries';
 import {
   canViewAuditHistory,
   isAwaitingSecondApproval,
+  refundKycBlock,
+  REQUIRE_KYC_APPROVAL_FLAG,
   SECOND_APPROVER_THRESHOLD_CENTS,
+  type RefundApprovalContext,
   type RefundSnapshot,
 } from '@/lib/rules';
 import type {
@@ -26,6 +30,35 @@ import type {
 } from '@/lib/rules/types';
 
 export const REFUND_ENTITY_TYPE = 'refund_request';
+
+/**
+ * Builds the context canApproveRefund needs. The flag value comes from the flags
+ * module and the KYC position from the shared customers row; nothing is stored
+ * on the refund, so the outcome tracks both the moment they change.
+ */
+export function loadRefundApprovalContext(
+  db: DatabaseWriter,
+  customerKycStatus: KycStatus,
+): RefundApprovalContext {
+  return {
+    requireKycApproval: isFlagEnabledSync(db, REQUIRE_KYC_APPROVAL_FLAG),
+    customerKycStatus,
+  };
+}
+
+/** Same context, read from the customer row at call time (usable inside a transaction). */
+export function loadRefundApprovalContextForCustomer(
+  db: DatabaseWriter,
+  customerId: string,
+): RefundApprovalContext | null {
+  const row = db
+    .select({ kycStatus: customers.kycStatus })
+    .from(customers)
+    .where(eq(customers.id, customerId))
+    .limit(1)
+    .get();
+  return row ? loadRefundApprovalContext(db, row.kycStatus) : null;
+}
 
 /** Refund value still owed to customers: everything not settled or rejected. */
 const PENDING_STATUSES: readonly RefundStatus[] = ['requested', 'under_review', 'approved'];
@@ -70,6 +103,7 @@ export interface RefundListItem {
   status: RefundStatus;
   requestedByName: string;
   awaitingSecondApproval: boolean;
+  blockedByKyc: boolean;
   createdAt: Date;
   modifiedAt: Date;
 }
@@ -114,7 +148,6 @@ export interface RefundDetail {
     subjectType: SubjectType;
     email: string;
     country: string;
-    /** Shown for information only; no refund rule reads it. */
     kycStatus: KycStatus;
     kycCase: CustomerKycSummary | null;
   };
@@ -131,6 +164,7 @@ export interface RefundDetail {
   auditHistory: AuditEntryView[];
   /** The projection the rules operate on, built once here. */
   snapshot: RefundSnapshot;
+  approvalContext: RefundApprovalContext;
 }
 
 function normalise(value: string): string {
@@ -181,8 +215,10 @@ export async function listRefunds(filters: RefundFilters = {}): Promise<RefundLi
       channel: refundRequests.channel,
       status: refundRequests.status,
       requestedByName: users.name,
+      requestedById: refundRequests.requestedById,
       firstApproverId: refundRequests.firstApproverId,
       secondApproverId: refundRequests.secondApproverId,
+      customerKycStatus: customers.kycStatus,
       createdAt: refundRequests.createdAt,
       modifiedAt: refundRequests.modifiedAt,
     })
@@ -191,6 +227,7 @@ export async function listRefunds(filters: RefundFilters = {}): Promise<RefundLi
     .innerJoin(users, eq(refundRequests.requestedById, users.id));
 
   const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query);
+  const requireKycApproval = isFlagEnabledSync(db, REQUIRE_KYC_APPROVAL_FLAG);
 
   // Case-insensitive matching is done here rather than in SQL: LIKE differs in
   // case sensitivity between SQLite and Postgres, and the queue is small.
@@ -202,15 +239,22 @@ export async function listRefunds(filters: RefundFilters = {}): Promise<RefundLi
         normalise(row.refundRef).includes(search) || normalise(row.customerName).includes(search)
       );
     })
-    .map(({ firstApproverId, secondApproverId, ...row }) => ({
-      ...row,
-      awaitingSecondApproval: isAwaitingSecondApproval({
-        amountCents: row.amountCents,
+    .map(({ requestedById, firstApproverId, secondApproverId, customerKycStatus, ...row }) => {
+      const snapshot: RefundSnapshot = {
+        refundRef: row.refundRef,
         status: row.status,
+        amountCents: row.amountCents,
+        currency: row.currency,
+        requestedById,
         firstApproverId,
         secondApproverId,
-      }),
-    }));
+      };
+      return {
+        ...row,
+        awaitingSecondApproval: isAwaitingSecondApproval(snapshot),
+        blockedByKyc: refundKycBlock(snapshot, { requireKycApproval, customerKycStatus }) !== null,
+      };
+    });
 
   const field = filters.sort ?? 'modified';
   const factor = (filters.direction ?? 'desc') === 'asc' ? 1 : -1;
@@ -286,7 +330,7 @@ export async function getRefundDetail(
 
   if (!row) return null;
 
-  const [approvers, events, auditHistory, history, kycCase] = await Promise.all([
+  const [approvers, events, auditHistory, history, kycCase, approvalContext] = await Promise.all([
     db.select({ id: users.id, name: users.name }).from(users),
     db
       .select({ event: refundEvents, actorName: users.name })
@@ -313,6 +357,7 @@ export async function getRefundDetail(
       )
       .orderBy(desc(refundRequests.createdAt)),
     getKycSummaryForCustomer(row.customer.id),
+    loadRefundApprovalContext(db, row.customer.kycStatus),
   ]);
 
   const nameById = new Map(approvers.map((user) => [user.id, user.name] as const));
@@ -372,5 +417,6 @@ export async function getRefundDetail(
       firstApproverId: row.refund.firstApproverId,
       secondApproverId: row.refund.secondApproverId,
     },
+    approvalContext,
   };
 }

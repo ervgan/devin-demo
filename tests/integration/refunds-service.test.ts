@@ -1,10 +1,13 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { eq } from 'drizzle-orm';
 import { createInMemoryDatabase, type AppDatabase } from '@/lib/db/client';
 import { seedDatabase } from '@/lib/db/seed';
 import { customers, kycCases, refundEvents, refundRequests } from '@/lib/db/schema';
 import { listAuditEntriesForEntity } from '@/lib/audit';
+import { setFlagValue } from '@/lib/flags/service';
+import { currentEnvironment, type isFlagEnabledSync } from '@/lib/flags/queries';
 import { approveCase } from '@/lib/kyc/service';
+import { REQUIRE_KYC_APPROVAL_FLAG } from '@/lib/rules';
 import {
   addRefundNote,
   approveRefund,
@@ -14,10 +17,23 @@ import {
 import { REFUND_ENTITY_TYPE } from '@/lib/refunds/queries';
 import type { Actor } from '@/lib/rules/types';
 
+/** Lets a test override what the flag read returns without touching the table. */
+let flagReadOverride: typeof isFlagEnabledSync | null = null;
+
+vi.mock('@/lib/flags/queries', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/flags/queries')>();
+  return {
+    ...actual,
+    isFlagEnabledSync: (...args: Parameters<typeof isFlagEnabledSync>) =>
+      (flagReadOverride ?? actual.isFlagEnabledSync)(...args),
+  };
+});
+
 const analyst: Actor = { id: 'usr_amara', name: 'Amara Osei', role: 'compliance_analyst' };
 const otherAnalyst: Actor = { id: 'usr_liu', name: 'Liu Chen', role: 'compliance_analyst' };
 const agent: Actor = { id: 'usr_priya', name: 'Priya Raman', role: 'support_agent' };
 const engineer: Actor = { id: 'usr_tom', name: 'Tom Becker', role: 'engineer' };
+const admin: Actor = { id: 'usr_nadia', name: 'Nadia Faraj', role: 'admin' };
 
 let db: AppDatabase;
 
@@ -45,6 +61,7 @@ async function auditCount(refundId: string): Promise<number> {
 }
 
 beforeEach(() => {
+  flagReadOverride = null;
   db = createInMemoryDatabase();
   seedDatabase(db);
 });
@@ -225,6 +242,84 @@ describe('addRefundNote', () => {
     const refundId = await refundIdByRef('RFD-5003');
     const result = await addRefundNote(db, engineer, refundId, 'Looks fine to me.');
     expect(result.allowed).toBe(false);
+  });
+});
+
+describe('refunds.require_kyc_approval', () => {
+  async function turnFlagOn(): Promise<void> {
+    const result = await setFlagValue(db, admin, REQUIRE_KYC_APPROVAL_FLAG, currentEnvironment(), true);
+    expect(result.allowed).toBe(true);
+  }
+
+  it('approves regardless of KYC state while the flag is off', async () => {
+    const refundId = await refundIdByRef('RFD-5001');
+    const [customer] = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.id, 'cus_hartley'))
+      .limit(1);
+    expect(customer!.kycStatus).not.toBe('approved');
+
+    const result = await approveRefund(db, agent, refundId);
+    expect(result.allowed).toBe(true);
+    expect((await refundByRef('RFD-5001')).status).toBe('approved');
+  });
+
+  it('blocks approval for a customer whose KYC is not approved, writing nothing', async () => {
+    await turnFlagOn();
+    const refundId = await refundIdByRef('RFD-5001');
+    const before = await auditCount(refundId);
+
+    const result = await approveRefund(db, agent, refundId);
+
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain("the customer's KYC is");
+    expect(result.reason).toContain(REQUIRE_KYC_APPROVAL_FLAG);
+    expect((await refundByRef('RFD-5001')).status).toBe('requested');
+    expect(await auditCount(refundId)).toBe(before);
+  });
+
+  it('unblocks the moment the customer KYC case is approved, with no stored state', async () => {
+    await turnFlagOn();
+    const refundId = await refundIdByRef('RFD-5002');
+    const [kycCase] = await db
+      .select()
+      .from(kycCases)
+      .where(eq(kycCases.caseRef, 'KYC-2049'))
+      .limit(1);
+
+    expect((await approveRefund(db, agent, refundId)).allowed).toBe(false);
+    expect((await approveCase(db, analyst, kycCase!.id)).allowed).toBe(true);
+
+    const result = await approveRefund(db, agent, refundId);
+    expect(result.allowed).toBe(true);
+    expect((await refundByRef('RFD-5002')).status).toBe('approved');
+  });
+
+  it('re-evaluates the gate inside the write transaction, so a flag turned on after the read still blocks', async () => {
+    await turnFlagOn();
+    const refundId = await refundIdByRef('RFD-5001');
+    const before = await auditCount(refundId);
+
+    // The first read (approveRefund's load) sees the flag off; the re-read inside
+    // the transaction sees the real, now-on value.
+    flagReadOverride = () => {
+      flagReadOverride = null;
+      return false;
+    };
+    const result = await approveRefund(db, agent, refundId);
+    expect(flagReadOverride).toBeNull();
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain(REQUIRE_KYC_APPROVAL_FLAG);
+
+    expect((await refundByRef('RFD-5001')).status).toBe('requested');
+    expect(await auditCount(refundId)).toBe(before);
+  });
+
+  it('approves an already-KYC-approved customer while the flag is on', async () => {
+    await turnFlagOn();
+    const refundId = await refundIdByRef('RFD-5003');
+    expect((await approveRefund(db, analyst, refundId)).allowed).toBe(true);
   });
 });
 

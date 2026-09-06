@@ -14,6 +14,7 @@ import {
   canViewAuditHistory,
   formatMoney,
   isAwaitingSecondApproval,
+  refundKycBlock,
   mayAddRefundNote,
   mayRejectRefund,
   mayRequestRefundInformation,
@@ -51,9 +52,10 @@ export default async function RefundDetailPage({ params, searchParams }: PagePro
 
   if (!detail) notFound();
 
-  // The one approval decision. The button state and the message both come from
-  // this result; nothing here re-derives eligibility.
-  const approve = canApproveRefund(actor, detail.snapshot);
+  // The one approval decision. The button state, the banner and the message all
+  // come from this result; nothing here re-derives eligibility.
+  const approve = canApproveRefund(actor, detail.snapshot, detail.approvalContext);
+  const kycBlock = refundKycBlock(detail.snapshot, detail.approvalContext);
   const reject = mayRejectRefund(actor, detail.snapshot);
   const information = mayRequestRefundInformation(actor, detail.snapshot);
   const note = mayAddRefundNote(actor);
@@ -76,6 +78,8 @@ export default async function RefundDetailPage({ params, searchParams }: PagePro
         </div>
       ) : null}
 
+      {kycBlock ? <div className="notice denied">{kycBlock.reason}</div> : null}
+
       <div className="between">
         <div>
           <h1>
@@ -90,6 +94,7 @@ export default async function RefundDetailPage({ params, searchParams }: PagePro
         <div className="row">
           <RefundStatusPill status={detail.status} />
           {awaitingSecondApproval ? <span className="pill">Awaiting 2nd approval</span> : null}
+          {kycBlock ? <span className="pill kyc-rejected">Blocked: KYC not approved</span> : null}
         </div>
       </div>
 
@@ -127,7 +132,8 @@ export default async function RefundDetailPage({ params, searchParams }: PagePro
               </dd>
             </dl>
             <p className="muted">
-              KYC is shown for information only; no refund decision depends on it.
+              Whether KYC gates approval is decided by <code>lib/rules</code> from the{' '}
+              <code>refunds.require_kyc_approval</code> flag.
             </p>
           </section>
 
