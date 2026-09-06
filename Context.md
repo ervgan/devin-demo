@@ -10,8 +10,11 @@ have not been asked to implement yet.
 A prototype replacement for a fintech's three Microsoft Power Apps
 internal tools: a KYC review queue, a refunds dashboard, and a
 feature-flag admin panel. Users are internal staff: compliance
-analysts, support agents, engineers. The engineers will eventually
-build 10 more of these apps.
+analysts, support agents, engineers. These replace tools people use
+daily, so they must feel like working operational software. Depth
+of domain modelling matters more than visual polish — keep the
+styling clean, restrained and professional, and spend the effort
+on the data model and workflows.
 
 ## The one architectural constraint that matters
 Business rules live in ONE place: `lib/rules`. UI modules import
@@ -19,8 +22,10 @@ them. No module may re-implement or inline a business rule, and no
 UI module may read the flags table or the audit table directly —
 those go through `lib/rules` and `lib/audit`.
 
-This is the entire point of the prototype. If the same condition 
-would appear in two modules, stop and extract it instead.
+This is the entire point of the prototype. On the platform being
+replaced, the same rule gets duplicated per app with no compiler
+and no shared test. If the same condition would appear in two
+modules, stop and extract it instead.
 
 ## Stack
 - Next.js (App Router), TypeScript strict mode
@@ -28,7 +33,8 @@ would appear in two modules, stop and extract it instead.
 - Vitest for unit and integration tests
 - One process: `npm run dev` runs everything
 - No auth provider. A dev-only user switcher sets the current
-  user and role from a seeded users table.
+  actor and role from a seeded users table. Authorization is real
+  and lives in lib/rules; only authentication is stubbed.
 
 ## Folder structure
 app/
@@ -44,32 +50,41 @@ components/     Shared UI
 tests/
 
 ## Data model
-One customers table shared by KYC and refunds, not per-module
-copies. One users table. One flags table with a value per
-environment (dev/staging/prod). One append-only audit_log table
-(actor, action, entity, before, after, timestamp) written by every
-state change in every module.
+One customers table shared by KYC and refunds — not per-module
+copies. One users table with roles. One flags table with a value
+per environment (dev/staging/prod). One append-only audit_log
+table (actor, action, entity, before, after, timestamp) written by
+every state change in every module.
 
 Audit rows are append-only: no update or delete paths exist in
 lib/audit, and nothing outside lib/audit writes to that table.
 
-Flags are stored and editable, but no module consumes a flag
-value unless a task explicitly asks for it.
+Flags are stored and editable, but no module consumes a flag value
+unless a task explicitly asks for it.
 
 ## How rules signal denial
-Rules in lib/rules return a result object indicating allowed or
-denied with a human-readable reason. They do not throw for
-business denials and do not render UI. The UI renders the reason
-it receives. This keeps denial messages testable without mounting
-components.
+Rules in lib/rules take an actor with a role and return a result
+object indicating allowed or denied with a human-readable reason.
+They do not throw for business denials and do not render UI. The
+UI renders the reason it receives. This keeps denial messages
+testable without mounting components.
 
 ## Seed data
-Seed at least 8 customers spanning every KYC state (pending,
-approved, rejected) and both risk levels, and refund requests
-attached to customers on both sides of the KYC line — so the allow
-path and the deny path are both demonstrable without editing data
-first. Seed 3 users: a compliance analyst, a support agent, an
-engineer.
+Seed enough data that every state and rule is demonstrable without
+editing anything first.
+
+- 12+ KYC cases across all stages (Capture, Enrichment, Due
+  Diligence, Fulfilment) plus some Approved and Rejected, covering
+  individual and organisation subjects and all risk ratings. Each
+  case has a document checklist with some verified, some missing.
+- 15+ refund requests across every state (Requested, Under Review,
+  Approved, Settled, Rejected), varied amounts spanning the
+  second-approver threshold, several reason codes. At least one
+  awaiting second approval, approved by one user and needing a
+  different one. At least two attached to customers whose KYC is
+  not approved, so the deny path is demonstrable.
+- 4 users: two compliance analysts (so second approval by a
+  different user is possible), one support agent, one engineer.
 
 ## Database portability
 SQLite is a prototype choice; production would be Postgres. Write
@@ -81,9 +96,9 @@ the Postgres column type maps cleanly.
 
 ## Testing rules
 Every function in lib/rules has unit tests covering both the allow
-and the deny path. Every cross-module behaviour has an integration
-test. CI runs lint, typecheck and tests. A PR with failing CI is
-not ready.
+and the deny path, including role checks. Every cross-module
+behaviour has an integration test. CI runs lint, typecheck and
+tests. A PR with failing CI is not ready.
 
 ## Dependencies
 Ask before adding any dependency not already listed in Stack.
@@ -99,6 +114,6 @@ Prefer the standard library and what is already installed.
 
 ## Out of scope — do not build
 Real auth/SSO, real KYC vendor integrations, deployment,
-email/notifications, mobile layouts, design polish beyond clean
-and legible. Time is the binding constraint. If unsure whether
+email/notifications, mobile layouts, design polish beyond clean and
+legible. Time is the binding constraint. If unsure whether
 something is in scope, ask before building it.
