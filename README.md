@@ -48,8 +48,8 @@ review refund requests through Requested → Under Review → Approved → Settl
 - When the `refunds.require_kyc_approval` flag is on, a refund can only be
   approved if the customer's KYC case is approved. The block is derived on every
   read, so it lifts as soon as the case is approved or the flag is turned off.
-- Rejections and internal notes require text; settled and rejected refunds are
-  immutable.
+- Rejections and internal notes require text; settled and rejected refunds can
+  no longer be decided, though internal notes may still be added.
 
 **Feature-flag admin** (`/flags`) — flags hold one value per environment
 (dev / staging / prod), have an owner, and are editable by admins only. No
