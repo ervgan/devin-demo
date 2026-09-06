@@ -142,7 +142,12 @@ export default async function FlagDetailPage({ params, searchParams }: PageProps
               </tbody>
             </table>
           </section>
-          ) : null}
+          ) : (
+          <section className="card">
+            <h2>Change history</h2>
+            <p className="muted">{auditAccess.reason}</p>
+          </section>
+          )}
         </div>
 
         <section className="card">
