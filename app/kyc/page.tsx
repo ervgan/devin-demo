@@ -2,6 +2,8 @@ import Link from 'next/link';
 import { formatDateTime, RiskPill, StagePill } from '@/components/Pills';
 import { countCasesByStage, listCases, type CaseFilters } from '@/lib/kyc/queries';
 import { listUsers } from '@/lib/session';
+import { toActor } from '@/lib/actors';
+import { canReviewCases } from '@/lib/rules';
 import {
   CASE_STAGES,
   RISK_RATINGS,
@@ -40,7 +42,7 @@ export default async function KycQueuePage({ searchParams }: { searchParams: Sea
     listUsers(),
   ]);
 
-  const reviewers = users.filter((user) => user.role === 'compliance_analyst');
+  const reviewers = users.filter((user) => canReviewCases(toActor(user)).allowed);
 
   return (
     <>

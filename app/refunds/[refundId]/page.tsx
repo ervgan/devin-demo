@@ -11,6 +11,7 @@ import { getRefundDetail } from '@/lib/refunds/queries';
 import { getCurrentActor, listUsers } from '@/lib/session';
 import {
   canApproveRefund,
+  canViewAuditHistory,
   formatMoney,
   isAwaitingSecondApproval,
   mayAddRefundNote,
@@ -60,6 +61,7 @@ export default async function RefundDetailPage({ params, searchParams }: PagePro
   const information = mayRequestRefundInformation(actor, detail.snapshot);
   const note = mayAddRefundNote(actor);
   const awaitingSecondApproval = isAwaitingSecondApproval(detail.snapshot);
+  const auditAccess = canViewAuditHistory(actor);
   const needsTwoApprovals = requiresSecondApproval(detail.snapshot);
 
   return (
@@ -216,6 +218,7 @@ export default async function RefundDetailPage({ params, searchParams }: PagePro
             </ul>
           </section>
 
+          {auditAccess.allowed ? (
           <section className="card">
             <h2>Audit history</h2>
             <table>
@@ -251,6 +254,7 @@ export default async function RefundDetailPage({ params, searchParams }: PagePro
               </tbody>
             </table>
           </section>
+          ) : null}
         </div>
 
         <section className="card">

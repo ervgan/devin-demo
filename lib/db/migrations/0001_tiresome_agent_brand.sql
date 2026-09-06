@@ -1,0 +1,1 @@
+ALTER TABLE `feature_flags` ADD `owner` text DEFAULT 'Unassigned' NOT NULL;

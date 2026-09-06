@@ -215,11 +215,16 @@ export async function listRefunds(filters: RefundFilters = {}): Promise<RefundLi
   return items.sort((a, b) => compareListItems(a, b, field) * factor);
 }
 
+export interface PendingValue {
+  currency: string;
+  amountCents: number;
+}
+
 export interface RefundTotals {
   counts: Record<RefundStatus, number>;
   awaitingSecondApproval: number;
-  pendingValueCents: number;
-  currency: string;
+  /** One total per currency: amounts in different currencies are never added together. */
+  pendingValues: PendingValue[];
 }
 
 export async function summariseRefunds(): Promise<RefundTotals> {
@@ -240,16 +245,22 @@ export async function summariseRefunds(): Promise<RefundTotals> {
     settled: 0,
     rejected: 0,
   };
-  let pendingValueCents = 0;
+  const pending = new Map<string, number>();
   let awaitingSecondApproval = 0;
 
   for (const row of rows) {
     counts[row.status] += 1;
-    if (PENDING_STATUSES.includes(row.status)) pendingValueCents += row.amountCents;
+    if (PENDING_STATUSES.includes(row.status)) {
+      pending.set(row.currency, (pending.get(row.currency) ?? 0) + row.amountCents);
+    }
     if (isAwaitingSecondApproval(row)) awaitingSecondApproval += 1;
   }
 
-  return { counts, awaitingSecondApproval, pendingValueCents, currency: rows[0]?.currency ?? 'EUR' };
+  const pendingValues = [...pending.entries()]
+    .map(([currency, amountCents]) => ({ currency, amountCents }))
+    .sort((a, b) => b.amountCents - a.amountCents);
+
+  return { counts, awaitingSecondApproval, pendingValues };
 }
 
 export async function getRefundDetail(refundId: string): Promise<RefundDetail | null> {

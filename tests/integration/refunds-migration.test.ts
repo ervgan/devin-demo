@@ -16,16 +16,19 @@ function apply(db: Database.Database, file: string): void {
   for (const statement of sql.split('--> statement-breakpoint')) db.exec(statement);
 }
 
-function migrationFile(prefix: string): string {
-  const file = fs.readdirSync(MIGRATIONS).find((name) => name.startsWith(prefix));
-  if (!file) throw new Error(`No migration starting with ${prefix}`);
-  return file;
+function migrationTags(): string[] {
+  const journal = JSON.parse(
+    fs.readFileSync(path.join(MIGRATIONS, 'meta', '_journal.json'), 'utf8'),
+  ) as { entries: { tag: string }[] };
+  return journal.entries.map((entry) => `${entry.tag}.sql`);
 }
 
-describe('0001 refunds migration', () => {
+describe('the refunds migration', () => {
   it('upgrades a populated database and keeps its refunds', () => {
+    const tags = migrationTags();
+    const refundsMigration = tags[tags.length - 1];
     const db = new Database(':memory:');
-    apply(db, migrationFile('0000'));
+    for (const tag of tags.slice(0, -1)) apply(db, tag);
 
     db.exec(
       `INSERT INTO customers (id, name, subject_type, email, country, kyc_status, created_at)
@@ -41,7 +44,7 @@ describe('0001 refunds migration', () => {
        VALUES ('rfd_1', 'RFD-9001', 'cus_1', 2450, 'EUR', 'fraud', 'requested', 'usr_1', 1, 1)`,
     );
 
-    apply(db, migrationFile('0001'));
+    apply(db, refundsMigration);
 
     const refund = db
       .prepare('SELECT refund_ref, customer_id, transaction_id, channel FROM refund_requests')

@@ -12,8 +12,29 @@
     {
       "idx": 1,
       "version": "6",
-      "when": 1788694984769,
-      "tag": "0001_skinny_madame_hydra",
+      "when": 1788695109880,
+      "tag": "0001_tiresome_agent_brand",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1788695400000,
+      "tag": "0002_flag_owners_backfill",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1788695500000,
+      "tag": "0003_admin_user",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1788696583807,
+      "tag": "0004_wooden_rage",
       "breakpoints": true
     }
   ]

@@ -101,7 +101,13 @@ export default async function RefundsPage({ searchParams }: { searchParams: Sear
         ))}
         <div className="stage-count">
           <div className="label">Value pending</div>
-          <div className="value">{formatMoney(totals.pendingValueCents, totals.currency)}</div>
+          <div className="value">
+            {totals.pendingValues.length === 0
+              ? formatMoney(0, 'EUR')
+              : totals.pendingValues
+                  .map((value) => formatMoney(value.amountCents, value.currency))
+                  .join(' · ')}
+          </div>
         </div>
       </section>
 

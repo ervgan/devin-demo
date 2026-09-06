@@ -25,14 +25,25 @@ export interface CaseSnapshot {
   documents: CaseDocument[];
 }
 
-/** Roles that may move a case through the workflow at all. */
-const CASE_WORKER_ROLES = ['compliance_analyst', 'support_agent'] as const;
+/**
+ * Roles that may move a case through the workflow at all. KYC is compliance
+ * work: support agents own refunds and never touch a case.
+ */
+const CASE_WORKER_ROLES = ['compliance_analyst'] as const;
 
 /** Roles that may take a final decision on a case. */
 const CASE_DECIDER_ROLES = ['compliance_analyst'] as const;
 
 /** Documents must all be verified before a case leaves this stage. */
 const DOCUMENTS_COMPLETE_FROM: WorkflowStage = 'due_diligence';
+
+/**
+ * Whether a user is eligible to hold KYC cases. The reviewer picker filters on
+ * this so the same condition decides who may be offered and who may be saved.
+ */
+export function canReviewCases(user: Actor): RuleResult {
+  return requireRole(user, [...CASE_DECIDER_ROLES], 'review KYC cases');
+}
 
 export function isTerminalStage(stage: CaseStage): boolean {
   return stage === 'approved' || stage === 'rejected';
@@ -126,10 +137,30 @@ export function canAssignReviewer(
 ): RuleResult {
   const base = mayAssignReviewer(actor, snapshot);
   if (!base.allowed) return base;
-  if (reviewer.role !== 'compliance_analyst') {
+  if (!canReviewCases(reviewer).allowed) {
     return deny(`${reviewer.name} is not a compliance analyst and cannot review KYC cases.`);
   }
   return allow(`Case may be assigned to ${reviewer.name}.`);
+}
+
+/**
+ * Verifying a document is the compliance judgement that unblocks Fulfilment and
+ * approval, so it is limited to the same role that decides the case.
+ */
+export function canVerifyDocument(
+  actor: Actor,
+  snapshot: CaseSnapshot,
+  document: CaseDocument,
+): RuleResult {
+  const base = all(
+    requireRole(actor, [...CASE_DECIDER_ROLES], 'verify a KYC document'),
+    requireOpenCase(snapshot, 'have documents verified'),
+  );
+  if (!base.allowed) return base;
+  if (document.status === 'verified') {
+    return deny(`${document.documentType} is already verified.`);
+  }
+  return allow(`${document.documentType} may be marked verified.`);
 }
 
 export function canApproveCase(actor: Actor, snapshot: CaseSnapshot): RuleResult {

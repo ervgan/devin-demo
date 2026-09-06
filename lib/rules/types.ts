@@ -3,7 +3,7 @@
  * Values are the exact strings persisted in the database.
  */
 
-export const ROLES = ['compliance_analyst', 'support_agent', 'engineer'] as const;
+export const ROLES = ['compliance_analyst', 'support_agent', 'engineer', 'admin'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const WORKFLOW_STAGES = ['capture', 'enrichment', 'due_diligence', 'fulfilment'] as const;
@@ -68,6 +68,7 @@ export const CASE_EVENT_TYPES = [
   'stage_advanced',
   'information_requested',
   'reviewer_assigned',
+  'document_verified',
   'case_approved',
   'case_rejected',
 ] as const;
@@ -119,8 +120,15 @@ export const KYC_STATUS_LABELS: Record<KycStatus, string> = {
   rejected: 'Rejected',
 };
 
+export const ENVIRONMENT_LABELS: Record<Environment, string> = {
+  dev: 'Dev',
+  staging: 'Staging',
+  prod: 'Prod',
+};
+
 export const ROLE_LABELS: Record<Role, string> = {
   compliance_analyst: 'Compliance Analyst',
   support_agent: 'Support Agent',
   engineer: 'Engineer',
+  admin: 'Admin',
 };

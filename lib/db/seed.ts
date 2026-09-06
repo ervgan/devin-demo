@@ -39,6 +39,7 @@ const USERS: { id: string; name: string; email: string; role: Role }[] = [
   { id: 'usr_liu', name: 'Liu Chen', email: 'liu.chen@example.com', role: 'compliance_analyst' },
   { id: 'usr_priya', name: 'Priya Raman', email: 'priya.raman@example.com', role: 'support_agent' },
   { id: 'usr_tom', name: 'Tom Becker', email: 'tom.becker@example.com', role: 'engineer' },
+  { id: 'usr_nadia', name: 'Nadia Faraj', email: 'nadia.faraj@example.com', role: 'admin' },
 ];
 
 const INDIVIDUAL_DOCUMENTS = [
@@ -377,25 +378,40 @@ const REFUNDS: RefundFixture[] = [
   { ref: 'RFD-5017', customerId: 'cus_okafor', amountCents: 240000, reasonCode: 'fraud', channel: 'card', status: 'under_review', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: null, rejectionReason: null, createdHoursAgo: 26, transactionAmountCents: 240000, transactionDescription: 'Disputed card-not-present payment' },
 ];
 
-const FLAGS: { key: string; description: string; values: Record<'dev' | 'staging' | 'prod', boolean> }[] = [
+const FLAGS: {
+  key: string;
+  description: string;
+  owner: string;
+  values: Record<'dev' | 'staging' | 'prod', boolean>;
+}[] = [
   {
     key: 'kyc.enhanced_due_diligence',
     description: 'Route high-risk cases through the enhanced due diligence checklist.',
+    owner: 'Compliance',
     values: { dev: true, staging: true, prod: false },
   },
   {
     key: 'kyc.bulk_assignment',
     description: 'Allow reviewers to be assigned to several cases at once.',
+    owner: 'Compliance',
     values: { dev: true, staging: false, prod: false },
   },
   {
     key: 'refunds.second_approver',
     description: 'Require a second approver above the refund threshold.',
+    owner: 'Payments',
     values: { dev: true, staging: true, prod: true },
+  },
+  {
+    key: 'refunds.require_kyc_approval',
+    description: 'Require an approved KYC case on the customer before a refund is approved.',
+    owner: 'Compliance',
+    values: { dev: false, staging: false, prod: false },
   },
   {
     key: 'platform.dev_user_switcher',
     description: 'Expose the development-only actor switcher in the nav shell.',
+    owner: 'Platform',
     values: { dev: true, staging: false, prod: false },
   },
 ];
@@ -667,6 +683,7 @@ export function seedDatabase(db: DatabaseWriter): void {
           id: `flg_${flagIndex + 1}_${envIndex + 1}`,
           key: flag.key,
           description: flag.description,
+          owner: flag.owner,
           environment,
           enabled: flag.values[environment],
           updatedAt: at(-24),

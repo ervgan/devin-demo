@@ -207,6 +207,8 @@ export const featureFlags = sqliteTable(
     id: text('id').primaryKey(),
     key: text('key').notNull(),
     description: text('description').notNull(),
+    /** Team accountable for the flag. */
+    owner: text('owner').notNull(),
     environment: text('environment').$type<Environment>().notNull(),
     enabled: booleanCol('enabled').notNull(),
     updatedAt: timestampCol('updated_at').notNull(),
