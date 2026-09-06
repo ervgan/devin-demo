@@ -10,11 +10,13 @@ import {
 import { listAuditEntriesForEntity, type AuditEntryView } from '@/lib/audit';
 import { getKycSummaryForCustomer, type CustomerKycSummary } from '@/lib/kyc/queries';
 import {
+  canViewAuditHistory,
   isAwaitingSecondApproval,
   SECOND_APPROVER_THRESHOLD_CENTS,
   type RefundSnapshot,
 } from '@/lib/rules';
 import type {
+  Actor,
   KycStatus,
   RefundChannel,
   RefundEventType,
@@ -263,7 +265,10 @@ export async function summariseRefunds(): Promise<RefundTotals> {
   return { counts, awaitingSecondApproval, pendingValues };
 }
 
-export async function getRefundDetail(refundId: string): Promise<RefundDetail | null> {
+export async function getRefundDetail(
+  refundId: string,
+  reader: Actor,
+): Promise<RefundDetail | null> {
   const db = getDb();
   const [row] = await db
     .select({
@@ -289,7 +294,9 @@ export async function getRefundDetail(refundId: string): Promise<RefundDetail | 
       .innerJoin(users, eq(refundEvents.actorId, users.id))
       .where(eq(refundEvents.refundId, refundId))
       .orderBy(desc(refundEvents.createdAt)),
-    listAuditEntriesForEntity(db, REFUND_ENTITY_TYPE, refundId),
+    canViewAuditHistory(reader).allowed
+      ? listAuditEntriesForEntity(db, REFUND_ENTITY_TYPE, refundId)
+      : Promise.resolve<AuditEntryView[]>([]),
     db
       .select({
         id: refundRequests.id,

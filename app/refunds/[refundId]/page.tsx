@@ -46,11 +46,8 @@ interface PageProps {
 }
 
 export default async function RefundDetailPage({ params, searchParams }: PageProps) {
-  const [detail, actor, users] = await Promise.all([
-    getRefundDetail(params.refundId),
-    getCurrentActor(),
-    listUsers(),
-  ]);
+  const [actor, users] = await Promise.all([getCurrentActor(), listUsers()]);
+  const detail = await getRefundDetail(params.refundId, actor);
 
   if (!detail) notFound();
 

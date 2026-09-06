@@ -1,4 +1,5 @@
 import { recordAuditEntriesSync } from '@/lib/audit';
+import { requiresSecondApproval } from '@/lib/rules';
 import type { DatabaseWriter } from './client';
 import {
   customers,
@@ -459,7 +460,9 @@ function refundTimelineFor(fixture: RefundFixture, refundId: string): RefundEven
     push(fixture.firstApproverId ?? fixture.requestedById, 'review_started', 'under_review', null);
   }
 
-  if (fixture.firstApproverId) {
+  // Only refunds that need two approvals record a first approval of their own;
+  // a single-approval refund goes straight to refund_approved, as the service does.
+  if (fixture.firstApproverId && requiresSecondApproval(fixture)) {
     push(fixture.firstApproverId, 'first_approval_recorded', null, 'First approval recorded.');
   }
 

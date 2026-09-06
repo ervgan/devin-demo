@@ -190,6 +190,23 @@ describe('requestRefundInformation', () => {
   });
 });
 
+describe('the seeded refund timelines', () => {
+  it('records a first approval only where two approvals are needed', async () => {
+    const lowValue = await refundIdByRef('RFD-5006');
+    const highValue = await refundIdByRef('RFD-5008');
+
+    const typesFor = async (refundId: string) =>
+      (await db.select().from(refundEvents).where(eq(refundEvents.refundId, refundId))).map(
+        (event) => event.type,
+      );
+
+    expect(await typesFor(lowValue)).not.toContain('first_approval_recorded');
+    expect(await typesFor(lowValue)).toContain('refund_approved');
+    expect(await typesFor(highValue)).toContain('first_approval_recorded');
+    expect(await typesFor(highValue)).toContain('refund_approved');
+  });
+});
+
 describe('addRefundNote', () => {
   it('appends an internal note without changing the state', async () => {
     const refundId = await refundIdByRef('RFD-5003');
