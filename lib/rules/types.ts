@@ -45,6 +45,21 @@ export const REFUND_REASON_CODES = [
 ] as const;
 export type RefundReasonCode = (typeof REFUND_REASON_CODES)[number];
 
+export const REFUND_CHANNELS = ['card', 'bank_transfer', 'wallet', 'direct_debit'] as const;
+export type RefundChannel = (typeof REFUND_CHANNELS)[number];
+
+export const REFUND_EVENT_TYPES = [
+  'refund_requested',
+  'review_started',
+  'information_requested',
+  'note_added',
+  'first_approval_recorded',
+  'refund_approved',
+  'refund_rejected',
+  'refund_settled',
+] as const;
+export type RefundEventType = (typeof REFUND_EVENT_TYPES)[number];
+
 export const ENVIRONMENTS = ['dev', 'staging', 'prod'] as const;
 export type Environment = (typeof ENVIRONMENTS)[number];
 
@@ -70,6 +85,36 @@ export const STAGE_LABELS: Record<CaseStage, string> = {
   enrichment: 'Enrichment',
   due_diligence: 'Due Diligence',
   fulfilment: 'Fulfilment',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+export const REFUND_STATUS_LABELS: Record<RefundStatus, string> = {
+  requested: 'Requested',
+  under_review: 'Under Review',
+  approved: 'Approved',
+  settled: 'Settled',
+  rejected: 'Rejected',
+};
+
+export const REFUND_REASON_LABELS: Record<RefundReasonCode, string> = {
+  duplicate_charge: 'Duplicate charge',
+  service_not_received: 'Service not received',
+  fraud: 'Fraud',
+  goodwill: 'Goodwill',
+  price_adjustment: 'Price adjustment',
+};
+
+export const REFUND_CHANNEL_LABELS: Record<RefundChannel, string> = {
+  card: 'Card',
+  bank_transfer: 'Bank transfer',
+  wallet: 'Wallet',
+  direct_debit: 'Direct debit',
+};
+
+export const KYC_STATUS_LABELS: Record<KycStatus, string> = {
+  not_started: 'Not started',
+  in_review: 'In review',
   approved: 'Approved',
   rejected: 'Rejected',
 };

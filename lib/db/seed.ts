@@ -7,7 +7,9 @@ import {
   kycCases,
   kycDocuments,
   kycRiskFactors,
+  refundEvents,
   refundRequests,
+  transactions,
   users,
 } from './schema';
 import type {
@@ -15,6 +17,8 @@ import type {
   CaseStage,
   DocumentStatus,
   KycStatus,
+  RefundChannel,
+  RefundEventType,
   RefundReasonCode,
   RefundStatus,
   RiskRating,
@@ -341,31 +345,36 @@ interface RefundFixture {
   customerId: string;
   amountCents: number;
   reasonCode: RefundReasonCode;
+  channel: RefundChannel;
   status: RefundStatus;
   requestedById: string;
   firstApproverId: string | null;
   secondApproverId: string | null;
   rejectionReason: string | null;
   createdHoursAgo: number;
+  /** What the customer originally paid; never less than the refund. */
+  transactionAmountCents: number;
+  transactionDescription: string;
 }
 
 const REFUNDS: RefundFixture[] = [
-  { ref: 'RFD-5001', customerId: 'cus_hartley', amountCents: 2450, reasonCode: 'duplicate_charge', status: 'requested', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 4 },
-  { ref: 'RFD-5002', customerId: 'cus_navarro', amountCents: 18900, reasonCode: 'service_not_received', status: 'requested', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 9 },
-  { ref: 'RFD-5003', customerId: 'cus_petrov', amountCents: 125000, reasonCode: 'fraud', status: 'under_review', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 14 },
-  { ref: 'RFD-5004', customerId: 'cus_harbourline', amountCents: 640000, reasonCode: 'service_not_received', status: 'under_review', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: null, rejectionReason: null, createdHoursAgo: 18 },
-  { ref: 'RFD-5005', customerId: 'cus_castille', amountCents: 512000, reasonCode: 'price_adjustment', status: 'under_review', requestedById: 'usr_priya', firstApproverId: 'usr_liu', secondApproverId: null, rejectionReason: null, createdHoursAgo: 22 },
-  { ref: 'RFD-5006', customerId: 'cus_petrov', amountCents: 7300, reasonCode: 'goodwill', status: 'approved', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: null, rejectionReason: null, createdHoursAgo: 30 },
-  { ref: 'RFD-5007', customerId: 'cus_harbourline', amountCents: 98000, reasonCode: 'duplicate_charge', status: 'approved', requestedById: 'usr_priya', firstApproverId: 'usr_liu', secondApproverId: null, rejectionReason: null, createdHoursAgo: 36 },
-  { ref: 'RFD-5008', customerId: 'cus_petrov', amountCents: 750000, reasonCode: 'fraud', status: 'approved', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: 'usr_liu', rejectionReason: null, createdHoursAgo: 44 },
-  { ref: 'RFD-5009', customerId: 'cus_harbourline', amountCents: 1250, reasonCode: 'goodwill', status: 'settled', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: null, rejectionReason: null, createdHoursAgo: 60 },
-  { ref: 'RFD-5010', customerId: 'cus_petrov', amountCents: 43200, reasonCode: 'price_adjustment', status: 'settled', requestedById: 'usr_priya', firstApproverId: 'usr_liu', secondApproverId: null, rejectionReason: null, createdHoursAgo: 72 },
-  { ref: 'RFD-5011', customerId: 'cus_harbourline', amountCents: 880000, reasonCode: 'service_not_received', status: 'settled', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: 'usr_liu', rejectionReason: null, createdHoursAgo: 96 },
-  { ref: 'RFD-5012', customerId: 'cus_vaughn', amountCents: 26000, reasonCode: 'fraud', status: 'rejected', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: 'Customer KYC was rejected on a confirmed sanctions match.', createdHoursAgo: 110 },
-  { ref: 'RFD-5013', customerId: 'cus_solstice', amountCents: 410000, reasonCode: 'duplicate_charge', status: 'requested', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 12 },
-  { ref: 'RFD-5014', customerId: 'cus_okafor', amountCents: 9900, reasonCode: 'goodwill', status: 'requested', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 16 },
-  { ref: 'RFD-5015', customerId: 'cus_navarro', amountCents: 305000, reasonCode: 'price_adjustment', status: 'rejected', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: 'Adjustment already applied on the original invoice.', createdHoursAgo: 130 },
-  { ref: 'RFD-5016', customerId: 'cus_castille', amountCents: 62000, reasonCode: 'service_not_received', status: 'under_review', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 20 },
+  { ref: 'RFD-5001', customerId: 'cus_hartley', amountCents: 2450, reasonCode: 'duplicate_charge', channel: 'card', status: 'requested', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 4, transactionAmountCents: 2450, transactionDescription: 'Monthly account fee' },
+  { ref: 'RFD-5002', customerId: 'cus_navarro', amountCents: 18900, reasonCode: 'service_not_received', channel: 'card', status: 'requested', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 9, transactionAmountCents: 24900, transactionDescription: 'Premium support subscription' },
+  { ref: 'RFD-5003', customerId: 'cus_petrov', amountCents: 125000, reasonCode: 'fraud', channel: 'card', status: 'under_review', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 14, transactionAmountCents: 125000, transactionDescription: 'Card payment to unrecognised merchant' },
+  { ref: 'RFD-5004', customerId: 'cus_harbourline', amountCents: 640000, reasonCode: 'service_not_received', channel: 'bank_transfer', status: 'under_review', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: null, rejectionReason: null, createdHoursAgo: 18, transactionAmountCents: 640000, transactionDescription: 'Freight settlement, cancelled sailing' },
+  { ref: 'RFD-5005', customerId: 'cus_castille', amountCents: 512000, reasonCode: 'price_adjustment', channel: 'bank_transfer', status: 'under_review', requestedById: 'usr_priya', firstApproverId: 'usr_liu', secondApproverId: null, rejectionReason: null, createdHoursAgo: 22, transactionAmountCents: 1280000, transactionDescription: 'Quarterly fit-out invoice' },
+  { ref: 'RFD-5006', customerId: 'cus_petrov', amountCents: 7300, reasonCode: 'goodwill', channel: 'wallet', status: 'approved', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: null, rejectionReason: null, createdHoursAgo: 30, transactionAmountCents: 7300, transactionDescription: 'Expedited transfer fee' },
+  { ref: 'RFD-5007', customerId: 'cus_harbourline', amountCents: 98000, reasonCode: 'duplicate_charge', channel: 'direct_debit', status: 'approved', requestedById: 'usr_priya', firstApproverId: 'usr_liu', secondApproverId: null, rejectionReason: null, createdHoursAgo: 36, transactionAmountCents: 98000, transactionDescription: 'Duplicated monthly haulage direct debit' },
+  { ref: 'RFD-5008', customerId: 'cus_petrov', amountCents: 750000, reasonCode: 'fraud', channel: 'bank_transfer', status: 'approved', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: 'usr_liu', rejectionReason: null, createdHoursAgo: 44, transactionAmountCents: 750000, transactionDescription: 'Disputed outbound transfer' },
+  { ref: 'RFD-5009', customerId: 'cus_harbourline', amountCents: 1250, reasonCode: 'goodwill', channel: 'card', status: 'settled', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: null, rejectionReason: null, createdHoursAgo: 60, transactionAmountCents: 6250, transactionDescription: 'Late payment charge' },
+  { ref: 'RFD-5010', customerId: 'cus_petrov', amountCents: 43200, reasonCode: 'price_adjustment', channel: 'card', status: 'settled', requestedById: 'usr_priya', firstApproverId: 'usr_liu', secondApproverId: null, rejectionReason: null, createdHoursAgo: 72, transactionAmountCents: 216000, transactionDescription: 'Annual plan, mid-term downgrade' },
+  { ref: 'RFD-5011', customerId: 'cus_harbourline', amountCents: 880000, reasonCode: 'service_not_received', channel: 'bank_transfer', status: 'settled', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: 'usr_liu', rejectionReason: null, createdHoursAgo: 96, transactionAmountCents: 880000, transactionDescription: 'Undelivered warehousing contract' },
+  { ref: 'RFD-5012', customerId: 'cus_vaughn', amountCents: 26000, reasonCode: 'fraud', channel: 'card', status: 'rejected', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: 'Chargeback already recovered the full amount from the acquirer.', createdHoursAgo: 110, transactionAmountCents: 26000, transactionDescription: 'Card payment disputed by the cardholder' },
+  { ref: 'RFD-5013', customerId: 'cus_solstice', amountCents: 410000, reasonCode: 'duplicate_charge', channel: 'wallet', status: 'requested', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 12, transactionAmountCents: 410000, transactionDescription: 'Duplicated wallet top-up' },
+  { ref: 'RFD-5014', customerId: 'cus_okafor', amountCents: 9900, reasonCode: 'goodwill', channel: 'wallet', status: 'requested', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 16, transactionAmountCents: 9900, transactionDescription: 'Cross-border transfer fee' },
+  { ref: 'RFD-5015', customerId: 'cus_navarro', amountCents: 305000, reasonCode: 'price_adjustment', channel: 'bank_transfer', status: 'rejected', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: 'Adjustment already applied on the original invoice.', createdHoursAgo: 130, transactionAmountCents: 915000, transactionDescription: 'Relocation services invoice' },
+  { ref: 'RFD-5016', customerId: 'cus_castille', amountCents: 62000, reasonCode: 'service_not_received', channel: 'direct_debit', status: 'under_review', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 20, transactionAmountCents: 62000, transactionDescription: 'Showroom installation call-out' },
+  { ref: 'RFD-5017', customerId: 'cus_okafor', amountCents: 240000, reasonCode: 'fraud', channel: 'card', status: 'under_review', requestedById: 'usr_priya', firstApproverId: 'usr_amara', secondApproverId: null, rejectionReason: null, createdHoursAgo: 26, transactionAmountCents: 240000, transactionDescription: 'Disputed card-not-present payment' },
 ];
 
 const FLAGS: { key: string; description: string; values: Record<'dev' | 'staging' | 'prod', boolean> }[] = [
@@ -390,6 +399,69 @@ const FLAGS: { key: string; description: string; values: Record<'dev' | 'staging
     values: { dev: true, staging: false, prod: false },
   },
 ];
+
+interface RefundEventRow {
+  id: string;
+  refundId: string;
+  actorId: string;
+  type: RefundEventType;
+  fromStatus: RefundStatus | null;
+  toStatus: RefundStatus | null;
+  note: string | null;
+  createdAt: Date;
+}
+
+/** Rebuilds the history that would have produced a refund fixture's current state. */
+function refundTimelineFor(fixture: RefundFixture, refundId: string): RefundEventRow[] {
+  const events: RefundEventRow[] = [];
+  let previous: RefundStatus = 'requested';
+  let hoursAgo = fixture.createdHoursAgo;
+
+  function push(
+    actorId: string,
+    type: RefundEventType,
+    toStatus: RefundStatus | null,
+    note: string | null,
+  ): void {
+    events.push({
+      id: `rev_${refundId}_${events.length + 1}`,
+      refundId,
+      actorId,
+      type,
+      fromStatus: events.length === 0 ? null : previous,
+      toStatus,
+      note,
+      createdAt: at(-hoursAgo),
+    });
+    if (toStatus) previous = toStatus;
+    hoursAgo = Math.max(hoursAgo - 2, 0);
+  }
+
+  push(fixture.requestedById, 'refund_requested', 'requested', 'Raised from a customer contact.');
+
+  if (fixture.status !== 'requested') {
+    push(fixture.firstApproverId ?? fixture.requestedById, 'review_started', 'under_review', null);
+  }
+
+  if (fixture.firstApproverId) {
+    push(fixture.firstApproverId, 'first_approval_recorded', null, 'First approval recorded.');
+  }
+
+  if (fixture.status === 'approved' || fixture.status === 'settled') {
+    const approver = fixture.secondApproverId ?? fixture.firstApproverId;
+    if (approver) push(approver, 'refund_approved', 'approved', null);
+  }
+
+  if (fixture.status === 'settled') {
+    push(fixture.firstApproverId ?? fixture.requestedById, 'refund_settled', 'settled', 'Funds returned to the customer.');
+  }
+
+  if (fixture.status === 'rejected') {
+    push(fixture.firstApproverId ?? 'usr_amara', 'refund_rejected', 'rejected', fixture.rejectionReason);
+  }
+
+  return events;
+}
 
 function documentTypesFor(subjectType: SubjectType): string[] {
   return subjectType === 'individual' ? INDIVIDUAL_DOCUMENTS : ORGANISATION_DOCUMENTS;
@@ -542,25 +614,51 @@ export function seedDatabase(db: DatabaseWriter): void {
   });
   db.insert(kycCaseEvents).values(eventRows).run();
 
+  db.insert(transactions)
+    .values(
+      REFUNDS.map((fixture, index) => ({
+        id: `txn_${index + 1}`,
+        transactionRef: `TXN-${8100 + index}`,
+        customerId: fixture.customerId,
+        amountCents: fixture.transactionAmountCents,
+        currency: 'EUR',
+        channel: fixture.channel,
+        description: fixture.transactionDescription,
+        occurredAt: at(-fixture.createdHoursAgo - 48),
+      })),
+    )
+    .run();
+
+  const refundEventRows = REFUNDS.flatMap((fixture, index) =>
+    refundTimelineFor(fixture, `rfd_${index + 1}`),
+  );
+
   db.insert(refundRequests)
     .values(
       REFUNDS.map((fixture, index) => ({
         id: `rfd_${index + 1}`,
         refundRef: fixture.ref,
         customerId: fixture.customerId,
+        transactionId: `txn_${index + 1}`,
         amountCents: fixture.amountCents,
         currency: 'EUR',
         reasonCode: fixture.reasonCode,
+        channel: fixture.channel,
         status: fixture.status,
         requestedById: fixture.requestedById,
         firstApproverId: fixture.firstApproverId,
         secondApproverId: fixture.secondApproverId,
         rejectionReason: fixture.rejectionReason,
         createdAt: at(-fixture.createdHoursAgo),
-        modifiedAt: at(-fixture.createdHoursAgo + 1),
+        modifiedAt:
+          refundEventRows
+            .filter((event) => event.refundId === `rfd_${index + 1}`)
+            .at(-1)?.createdAt ?? at(-fixture.createdHoursAgo),
       })),
     )
     .run();
+
+  db.insert(refundEvents).values(refundEventRows).run();
 
   db.insert(featureFlags)
     .values(
@@ -589,6 +687,24 @@ export function seedDatabase(db: DatabaseWriter): void {
         entityId: event.caseId,
         before: event.fromStage === null ? null : { stage: event.fromStage },
         after: event.toStage === null ? { note: event.note } : { stage: event.toStage, note: event.note },
+        at: event.createdAt,
+      })),
+  );
+
+  recordAuditEntriesSync(
+    db,
+    refundEventRows
+      .filter((event) => event.type !== 'refund_requested')
+      .map((event) => ({
+        actor: actorById.get(event.actorId) ?? USERS[0],
+        action: `refund.${event.type}`,
+        entityType: 'refund_request',
+        entityId: event.refundId,
+        before: event.fromStatus === null ? null : { status: event.fromStatus },
+        after:
+          event.toStatus === null
+            ? { note: event.note }
+            : { status: event.toStatus, note: event.note },
         at: event.createdAt,
       })),
   );
