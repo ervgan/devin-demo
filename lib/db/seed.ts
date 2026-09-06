@@ -1,5 +1,5 @@
 import { recordAuditEntriesSync } from '@/lib/audit';
-import type { AppDatabase } from './client';
+import type { DatabaseWriter } from './client';
 import {
   customers,
   featureFlags,
@@ -396,7 +396,7 @@ function documentTypesFor(subjectType: SubjectType): string[] {
 }
 
 /** Deterministic fixture load. Assumes an empty, migrated database. */
-export function seedDatabase(db: AppDatabase): void {
+export function seedDatabase(db: DatabaseWriter): void {
   db.insert(users)
     .values(USERS.map((user) => ({ ...user, createdAt: at(-720) })))
     .run();

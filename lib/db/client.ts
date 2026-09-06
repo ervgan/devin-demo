@@ -8,6 +8,11 @@ import { seedDatabase } from './seed';
 
 export type AppDatabase = BetterSQLite3Database<typeof schema>;
 
+/** The database or an open transaction on it. Writers accept either. */
+export type DatabaseWriter =
+  | AppDatabase
+  | Parameters<Parameters<AppDatabase['transaction']>[0]>[0];
+
 const MIGRATIONS_FOLDER = path.join(process.cwd(), 'lib', 'db', 'migrations');
 
 function applyMigrations(db: AppDatabase): void {
@@ -38,7 +43,9 @@ export function getDb(): AppDatabase {
 
   const existing = db.select({ id: users.id }).from(users).limit(1).all();
   if (existing.length === 0) {
-    seedDatabase(db);
+    db.transaction((tx) => {
+      seedDatabase(tx);
+    });
   }
 
   cached = db;

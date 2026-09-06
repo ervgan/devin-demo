@@ -1,6 +1,6 @@
 import { and, desc, eq } from 'drizzle-orm';
 import { auditLog } from '@/lib/db/schema';
-import type { AppDatabase } from '@/lib/db/client';
+import type { AppDatabase, DatabaseWriter } from '@/lib/db/client';
 import type { Actor } from '@/lib/rules/types';
 
 /**
@@ -51,17 +51,8 @@ function buildRow(input: AuditEntryInput) {
   };
 }
 
-export async function recordAuditEntry(
-  db: AppDatabase,
-  input: AuditEntryInput,
-): Promise<AuditEntryView> {
-  const row = buildRow(input);
-  await db.insert(auditLog).values(row);
-  return { ...row, before: parse(row.before), after: parse(row.after) };
-}
-
-/** Fixture loading path. Still the only place the audit table is written. */
-export function recordAuditEntriesSync(db: AppDatabase, inputs: AuditEntryInput[]): void {
+/** Append rows. Accepts a transaction handle so writes can join a transaction. */
+export function recordAuditEntriesSync(db: DatabaseWriter, inputs: AuditEntryInput[]): void {
   if (inputs.length === 0) return;
   db.insert(auditLog).values(inputs.map(buildRow)).run();
 }

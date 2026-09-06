@@ -1,8 +1,15 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { eq } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { createInMemoryDatabase, type AppDatabase } from '@/lib/db/client';
 import { seedDatabase } from '@/lib/db/seed';
-import { auditLog, customers, kycCaseEvents, kycCases, kycDocuments } from '@/lib/db/schema';
+import {
+  auditLog,
+  customers,
+  kycCaseEvents,
+  kycCases,
+  kycDocuments,
+  users,
+} from '@/lib/db/schema';
 import { listAuditEntriesForEntity } from '@/lib/audit';
 import {
   advanceCase,
@@ -243,5 +250,60 @@ describe('audit log', () => {
     await approveCase(db, engineer, caseId);
 
     expect((await db.select().from(auditLog)).length).toBe(before);
+  });
+});
+
+describe('transactional writes', () => {
+  it('lets only one of two competing decisions on the same case succeed', async () => {
+    const caseId = await caseIdByRef('KYC-2049');
+    const auditBefore = await auditCount(caseId);
+
+    const [approval, rejection] = await Promise.all([
+      approveCase(db, analyst, caseId),
+      rejectCase(db, otherAnalyst, caseId, 'Competing rejection decision'),
+    ]);
+
+    expect([approval.allowed, rejection.allowed].filter(Boolean)).toHaveLength(1);
+
+    const stage = await stageOf(caseId);
+    expect(stage).toBe(approval.allowed ? 'approved' : 'rejected');
+
+    const events = await db.select().from(kycCaseEvents).where(eq(kycCaseEvents.caseId, caseId));
+    const decisions = events.filter(
+      (event) => event.type === 'case_approved' || event.type === 'case_rejected',
+    );
+    expect(decisions).toHaveLength(1);
+    expect(await auditCount(caseId)).toBe(auditBefore + 1);
+  });
+
+  it('rolls back the case and customer when the audit write fails', async () => {
+    const caseId = await caseIdByRef('KYC-2049');
+    const [before] = await db.select().from(kycCases).where(eq(kycCases.id, caseId)).limit(1);
+    db.run(sql`DROP TABLE audit_log`);
+
+    await expect(approveCase(db, analyst, caseId)).rejects.toThrow();
+
+    const [after] = await db.select().from(kycCases).where(eq(kycCases.id, caseId)).limit(1);
+    expect(after!.stage).toBe(before!.stage);
+    expect(after!.modifiedAt).toEqual(before!.modifiedAt);
+
+    const [customer] = await db
+      .select()
+      .from(customers)
+      .where(eq(customers.id, before!.customerId))
+      .limit(1);
+    expect(customer!.kycStatus).not.toBe('approved');
+
+    const events = await db.select().from(kycCaseEvents).where(eq(kycCaseEvents.caseId, caseId));
+    expect(events.some((event) => event.type === 'case_approved')).toBe(false);
+  });
+
+  it('leaves no partial fixtures when seeding fails part-way', () => {
+    const fresh = createInMemoryDatabase();
+    fresh.run(sql`DROP TABLE feature_flags`);
+
+    expect(() => fresh.transaction((tx) => seedDatabase(tx))).toThrow();
+    expect(fresh.select().from(users).all()).toHaveLength(0);
+    expect(fresh.select().from(kycCases).all()).toHaveLength(0);
   });
 });

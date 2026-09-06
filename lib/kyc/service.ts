@@ -1,5 +1,5 @@
-import { eq } from 'drizzle-orm';
-import { recordAuditEntry } from '@/lib/audit';
+import { and, eq, isNull } from 'drizzle-orm';
+import { recordAuditEntriesSync } from '@/lib/audit';
 import type { AppDatabase } from '@/lib/db/client';
 import { customers, kycCaseEvents, kycCases, kycDocuments, users } from '@/lib/db/schema';
 import {
@@ -26,6 +26,7 @@ interface LoadedCase {
   customerId: string;
   stage: CaseStage;
   assignedReviewerId: string | null;
+  modifiedAt: Date;
   snapshot: CaseSnapshot;
 }
 
@@ -43,6 +44,7 @@ async function loadCase(db: AppDatabase, caseId: string): Promise<LoadedCase | n
     customerId: row.customerId,
     stage: row.stage,
     assignedReviewerId: row.assignedReviewerId,
+    modifiedAt: row.modifiedAt,
     snapshot: {
       caseRef: row.caseRef,
       stage: row.stage,
@@ -64,53 +66,81 @@ interface TransitionWrite {
   action: string;
 }
 
-async function applyTransition(
+const CASE_NOT_FOUND = 'Case not found.';
+const CASE_CHANGED =
+  'This case changed while you were working on it. Reload the case and try again.';
+
+/**
+ * Persists a transition. The case row is updated only while it still matches
+ * the state the rule was evaluated against, and case, customer, timeline and
+ * audit writes share one transaction so a failure leaves no partial history.
+ */
+function applyTransition(
   db: AppDatabase,
   actor: Actor,
   loaded: LoadedCase,
   write: TransitionWrite,
-): Promise<void> {
-  const now = new Date();
-  const before = {
-    stage: loaded.stage,
-    assignedReviewerId: loaded.assignedReviewerId,
-  };
+  decision: RuleResult,
+): RuleResult {
+  return db.transaction((tx) => {
+    const now = new Date();
+    const before = {
+      stage: loaded.stage,
+      assignedReviewerId: loaded.assignedReviewerId,
+    };
 
-  await db
-    .update(kycCases)
-    .set({ ...write.patch, modifiedAt: now })
-    .where(eq(kycCases.id, loaded.id));
+    const unchanged = and(
+      eq(kycCases.id, loaded.id),
+      eq(kycCases.stage, loaded.stage),
+      eq(kycCases.modifiedAt, loaded.modifiedAt),
+      loaded.assignedReviewerId === null
+        ? isNull(kycCases.assignedReviewerId)
+        : eq(kycCases.assignedReviewerId, loaded.assignedReviewerId),
+    );
 
-  if (write.patch.stage === 'approved' || write.patch.stage === 'rejected') {
-    await db
-      .update(customers)
-      .set({ kycStatus: write.patch.stage })
-      .where(eq(customers.id, loaded.customerId));
-  }
+    const updated = tx
+      .update(kycCases)
+      .set({ ...write.patch, modifiedAt: now })
+      .where(unchanged)
+      .run();
 
-  await db.insert(kycCaseEvents).values({
-    id: `evt_${crypto.randomUUID()}`,
-    caseId: loaded.id,
-    actorId: actor.id,
-    type: write.eventType,
-    fromStage: loaded.stage,
-    toStage: write.patch.stage ?? null,
-    note: write.note,
-    createdAt: now,
-  });
+    if (updated.changes === 0) return deny(CASE_CHANGED);
 
-  await recordAuditEntry(db, {
-    actor,
-    action: write.action,
-    entityType: 'kyc_case',
-    entityId: loaded.id,
-    before,
-    after: { ...before, ...write.patch },
-    at: now,
+    if (write.patch.stage === 'approved' || write.patch.stage === 'rejected') {
+      tx.update(customers)
+        .set({ kycStatus: write.patch.stage })
+        .where(eq(customers.id, loaded.customerId))
+        .run();
+    }
+
+    tx.insert(kycCaseEvents)
+      .values({
+        id: `evt_${crypto.randomUUID()}`,
+        caseId: loaded.id,
+        actorId: actor.id,
+        type: write.eventType,
+        fromStage: loaded.stage,
+        toStage: write.patch.stage ?? null,
+        note: write.note,
+        createdAt: now,
+      })
+      .run();
+
+    recordAuditEntriesSync(tx, [
+      {
+        actor,
+        action: write.action,
+        entityType: 'kyc_case',
+        entityId: loaded.id,
+        before,
+        after: { ...before, ...write.patch },
+        at: now,
+      },
+    ]);
+
+    return decision;
   });
 }
-
-const CASE_NOT_FOUND = 'Case not found.';
 
 export async function advanceCase(
   db: AppDatabase,
@@ -126,13 +156,18 @@ export async function advanceCase(
   const target = nextStage(loaded.stage);
   if (target === null) return deny(CASE_NOT_FOUND);
 
-  await applyTransition(db, actor, loaded, {
-    patch: { stage: target },
-    eventType: 'stage_advanced',
-    note: null,
-    action: 'kyc.case.advanced',
-  });
-  return decision;
+  return applyTransition(
+    db,
+    actor,
+    loaded,
+    {
+      patch: { stage: target },
+      eventType: 'stage_advanced',
+      note: null,
+      action: 'kyc.case.advanced',
+    },
+    decision,
+  );
 }
 
 export async function requestInformation(
@@ -147,13 +182,18 @@ export async function requestInformation(
   const decision = canRequestInformation(actor, loaded.snapshot, reason);
   if (!decision.allowed) return decision;
 
-  await applyTransition(db, actor, loaded, {
-    patch: {},
-    eventType: 'information_requested',
-    note: reason.trim(),
-    action: 'kyc.case.information_requested',
-  });
-  return decision;
+  return applyTransition(
+    db,
+    actor,
+    loaded,
+    {
+      patch: {},
+      eventType: 'information_requested',
+      note: reason.trim(),
+      action: 'kyc.case.information_requested',
+    },
+    decision,
+  );
 }
 
 export async function assignReviewer(
@@ -172,13 +212,18 @@ export async function assignReviewer(
   const decision = canAssignReviewer(actor, loaded.snapshot, reviewer);
   if (!decision.allowed) return decision;
 
-  await applyTransition(db, actor, loaded, {
-    patch: { assignedReviewerId: reviewer.id },
-    eventType: 'reviewer_assigned',
-    note: `Assigned to ${reviewer.name}.`,
-    action: 'kyc.case.reviewer_assigned',
-  });
-  return decision;
+  return applyTransition(
+    db,
+    actor,
+    loaded,
+    {
+      patch: { assignedReviewerId: reviewer.id },
+      eventType: 'reviewer_assigned',
+      note: `Assigned to ${reviewer.name}.`,
+      action: 'kyc.case.reviewer_assigned',
+    },
+    decision,
+  );
 }
 
 export async function approveCase(
@@ -192,13 +237,18 @@ export async function approveCase(
   const decision = canApproveCase(actor, loaded.snapshot);
   if (!decision.allowed) return decision;
 
-  await applyTransition(db, actor, loaded, {
-    patch: { stage: 'approved' },
-    eventType: 'case_approved',
-    note: null,
-    action: 'kyc.case.approved',
-  });
-  return decision;
+  return applyTransition(
+    db,
+    actor,
+    loaded,
+    {
+      patch: { stage: 'approved' },
+      eventType: 'case_approved',
+      note: null,
+      action: 'kyc.case.approved',
+    },
+    decision,
+  );
 }
 
 export async function rejectCase(
@@ -213,11 +263,16 @@ export async function rejectCase(
   const decision = canRejectCase(actor, loaded.snapshot, reason);
   if (!decision.allowed) return decision;
 
-  await applyTransition(db, actor, loaded, {
-    patch: { stage: 'rejected', decisionReason: reason.trim() },
-    eventType: 'case_rejected',
-    note: reason.trim(),
-    action: 'kyc.case.rejected',
-  });
-  return decision;
+  return applyTransition(
+    db,
+    actor,
+    loaded,
+    {
+      patch: { stage: 'rejected', decisionReason: reason.trim() },
+      eventType: 'case_rejected',
+      note: reason.trim(),
+      action: 'kyc.case.rejected',
+    },
+    decision,
+  );
 }
