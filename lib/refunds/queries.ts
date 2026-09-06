@@ -294,7 +294,7 @@ export async function getRefundDetail(
       .innerJoin(users, eq(refundEvents.actorId, users.id))
       .where(eq(refundEvents.refundId, refundId))
       .orderBy(desc(refundEvents.createdAt)),
-    canViewAuditHistory(reader).allowed
+    canViewAuditHistory(reader, { domain: 'refunds', ownerId: row.refund.requestedById }).allowed
       ? listAuditEntriesForEntity(db, REFUND_ENTITY_TYPE, refundId)
       : Promise.resolve<AuditEntryView[]>([]),
     db

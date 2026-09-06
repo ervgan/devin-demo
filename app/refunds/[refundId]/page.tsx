@@ -58,7 +58,10 @@ export default async function RefundDetailPage({ params, searchParams }: PagePro
   const information = mayRequestRefundInformation(actor, detail.snapshot);
   const note = mayAddRefundNote(actor);
   const awaitingSecondApproval = isAwaitingSecondApproval(detail.snapshot);
-  const auditAccess = canViewAuditHistory(actor);
+  const auditAccess = canViewAuditHistory(actor, {
+    domain: 'refunds',
+    ownerId: detail.snapshot.requestedById,
+  });
   const needsTwoApprovals = requiresSecondApproval(detail.snapshot);
 
   return (
@@ -251,7 +254,12 @@ export default async function RefundDetailPage({ params, searchParams }: PagePro
               </tbody>
             </table>
           </section>
-          ) : null}
+          ) : (
+          <section className="card">
+            <h2>Audit history</h2>
+            <p className="muted">{auditAccess.reason}</p>
+          </section>
+          )}
         </div>
 
         <section className="card">
