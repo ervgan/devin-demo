@@ -1,0 +1,8 @@
+node_modules
+.next
+out
+data/*.db
+*.tsbuildinfo
+next-env.d.ts.timestamp
+.DS_Store
+coverage
