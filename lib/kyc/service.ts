@@ -8,6 +8,7 @@ import {
   canAssignReviewer,
   canRejectCase,
   canRequestInformation,
+  canVerifyDocument,
   deny,
   nextStage,
   type CaseSnapshot,
@@ -224,6 +225,81 @@ export async function assignReviewer(
     },
     decision,
   );
+}
+
+export async function verifyDocument(
+  db: AppDatabase,
+  actor: Actor,
+  caseId: string,
+  documentId: string,
+): Promise<RuleResult> {
+  const loaded = await loadCase(db, caseId);
+  if (!loaded) return deny(CASE_NOT_FOUND);
+
+  const [document] = await db
+    .select()
+    .from(kycDocuments)
+    .where(and(eq(kycDocuments.id, documentId), eq(kycDocuments.caseId, caseId)))
+    .limit(1);
+  if (!document) return deny('Document not found on this case.');
+
+  const decision = canVerifyDocument(actor, loaded.snapshot, document);
+  if (!decision.allowed) return decision;
+
+  return db.transaction((tx) => {
+    const now = new Date();
+
+    // The case must still be in the state the rule saw, so a decision that
+    // commits in between cannot be followed by a verification.
+    const touched = tx
+      .update(kycCases)
+      .set({ modifiedAt: now })
+      .where(
+        and(
+          eq(kycCases.id, caseId),
+          eq(kycCases.stage, loaded.stage),
+          eq(kycCases.modifiedAt, loaded.modifiedAt),
+        ),
+      )
+      .run();
+
+    if (touched.changes === 0) return deny(CASE_CHANGED);
+
+    const updated = tx
+      .update(kycDocuments)
+      .set({ status: 'verified', verifiedAt: now, verifiedById: actor.id })
+      .where(and(eq(kycDocuments.id, documentId), eq(kycDocuments.status, 'missing')))
+      .run();
+
+    if (updated.changes === 0) return deny(`${document.documentType} is already verified.`);
+
+    tx.insert(kycCaseEvents)
+      .values({
+        id: `evt_${crypto.randomUUID()}`,
+        caseId,
+        actorId: actor.id,
+        type: 'document_verified',
+        fromStage: loaded.stage,
+        toStage: null,
+        note: `${document.documentType} verified.`,
+        createdAt: now,
+      })
+      .run();
+
+    recordAuditEntriesSync(tx, [
+      {
+        actor,
+        action: 'kyc.document.verified',
+        entityType: 'kyc_case',
+        entityId: caseId,
+        before: { document: document.documentType, status: document.status },
+        after: { document: document.documentType, status: 'verified' },
+        at: now,
+      },
+    ]);
+
+    return decision;
+  });
 }
 
 export async function approveCase(

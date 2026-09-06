@@ -7,12 +7,17 @@ import {
   assignReviewerAction,
   rejectCaseAction,
   requestInformationAction,
+  verifyDocumentAction,
 } from '@/app/kyc/actions';
 import { getCaseDetail } from '@/lib/kyc/queries';
 import { getCurrentActor, listUsers } from '@/lib/session';
+import { toActor } from '@/lib/actors';
 import {
   canAdvanceStage,
   canApproveCase,
+  canReviewCases,
+  canVerifyDocument,
+  canViewAuditHistory,
   mayAssignReviewer,
   mayRejectCase,
   mayRequestInformation,
@@ -27,6 +32,7 @@ const EVENT_LABELS: Record<CaseEventType, string> = {
   stage_advanced: 'Stage advanced',
   information_requested: 'Information requested',
   reviewer_assigned: 'Reviewer assigned',
+  document_verified: 'Document verified',
   case_approved: 'Case approved',
   case_rejected: 'Case rejected',
 };
@@ -37,20 +43,18 @@ interface PageProps {
 }
 
 export default async function KycCasePage({ params, searchParams }: PageProps) {
-  const [detail, actor, users] = await Promise.all([
-    getCaseDetail(params.caseId),
-    getCurrentActor(),
-    listUsers(),
-  ]);
+  const [actor, users] = await Promise.all([getCurrentActor(), listUsers()]);
+  const detail = await getCaseDetail(params.caseId, actor);
 
   if (!detail) notFound();
 
-  const reviewers = users.filter((user) => user.role === 'compliance_analyst');
+  const reviewers = users.filter((user) => canReviewCases(toActor(user)).allowed);
   const advance = canAdvanceStage(actor, detail.snapshot);
   const approve = canApproveCase(actor, detail.snapshot);
   const reject = mayRejectCase(actor, detail.snapshot);
   const information = mayRequestInformation(actor, detail.snapshot);
   const assignment = mayAssignReviewer(actor, detail.snapshot);
+  const auditAccess = canViewAuditHistory(actor);
   const upcoming = nextStage(detail.stage);
 
   return (
@@ -126,20 +130,38 @@ export default async function KycCasePage({ params, searchParams }: PageProps) {
                   <th>Document</th>
                   <th>Status</th>
                   <th>Verified</th>
+                  <th />
                 </tr>
               </thead>
               <tbody>
-                {detail.documents.map((document) => (
-                  <tr key={document.id}>
-                    <td>{document.documentType}</td>
-                    <td>
-                      <DocumentStatusPill status={document.status} />
-                    </td>
-                    <td className="muted">
-                      {document.verifiedAt ? formatDateTime(document.verifiedAt) : '—'}
-                    </td>
-                  </tr>
-                ))}
+                {detail.documents.map((document) => {
+                  const verification = canVerifyDocument(actor, detail.snapshot, document);
+                  return (
+                    <tr key={document.id}>
+                      <td>{document.documentType}</td>
+                      <td>
+                        <DocumentStatusPill status={document.status} />
+                      </td>
+                      <td className="muted">
+                        {document.verifiedAt ? formatDateTime(document.verifiedAt) : '—'}
+                      </td>
+                      <td>
+                        {document.status === 'verified' ? null : (
+                          <form action={verifyDocumentAction}>
+                            <input type="hidden" name="caseId" value={detail.id} />
+                            <input type="hidden" name="documentId" value={document.id} />
+                            <button type="submit" disabled={!verification.allowed}>
+                              Verify
+                            </button>
+                            {verification.allowed ? null : (
+                              <span className="deny-reason">{verification.reason}</span>
+                            )}
+                          </form>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </section>
@@ -175,6 +197,7 @@ export default async function KycCasePage({ params, searchParams }: PageProps) {
             </ul>
           </section>
 
+          {auditAccess.allowed ? (
           <section className="card">
             <h2>Audit history</h2>
             <table>
@@ -210,6 +233,7 @@ export default async function KycCasePage({ params, searchParams }: PageProps) {
               </tbody>
             </table>
           </section>
+          ) : null}
         </div>
 
         <section className="card">
@@ -247,7 +271,7 @@ export default async function KycCasePage({ params, searchParams }: PageProps) {
                 defaultValue={detail.reviewerId ?? reviewers[0]?.id ?? ''}
                 disabled={!assignment.allowed}
               >
-                {users.map((user) => (
+                {reviewers.map((user) => (
                   <option key={user.id} value={user.id}>
                     {user.name}
                   </option>

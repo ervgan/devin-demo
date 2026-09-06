@@ -9,8 +9,9 @@ import {
   users,
 } from '@/lib/db/schema';
 import { listAuditEntriesForEntity, type AuditEntryView } from '@/lib/audit';
-import { missingDocuments, type CaseSnapshot } from '@/lib/rules';
+import { canViewAuditHistory, missingDocuments, type CaseSnapshot } from '@/lib/rules';
 import type {
+  Actor,
   CaseEventType,
   CaseStage,
   DocumentStatus,
@@ -87,6 +88,7 @@ export interface CaseDetail {
   documents: CaseDocumentView[];
   riskFactors: CaseRiskFactorView[];
   timeline: CaseTimelineEntry[];
+  /** Empty unless the reader is allowed to see the technical audit trail. */
   auditHistory: AuditEntryView[];
   /** The projection the rules operate on, built once here. */
   snapshot: CaseSnapshot;
@@ -149,7 +151,7 @@ export async function countCasesByStage(): Promise<Record<CaseStage, number>> {
   return counts;
 }
 
-export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> {
+export async function getCaseDetail(caseId: string, reader: Actor): Promise<CaseDetail | null> {
   const db = getDb();
   const [row] = await db
     .select({ kycCase: kycCases, customer: customers, reviewerName: users.name })
@@ -178,7 +180,9 @@ export async function getCaseDetail(caseId: string): Promise<CaseDetail | null> 
       .innerJoin(users, eq(kycCaseEvents.actorId, users.id))
       .where(eq(kycCaseEvents.caseId, caseId))
       .orderBy(desc(kycCaseEvents.createdAt)),
-    listAuditEntriesForEntity(db, KYC_ENTITY_TYPE, caseId),
+    canViewAuditHistory(reader).allowed
+      ? listAuditEntriesForEntity(db, KYC_ENTITY_TYPE, caseId)
+      : Promise.resolve<AuditEntryView[]>([]),
   ]);
 
   const documentViews: CaseDocumentView[] = documents.map((document) => ({
