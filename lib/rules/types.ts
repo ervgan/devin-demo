@@ -74,6 +74,12 @@ export const STAGE_LABELS: Record<CaseStage, string> = {
   rejected: 'Rejected',
 };
 
+export const ENVIRONMENT_LABELS: Record<Environment, string> = {
+  dev: 'Dev',
+  staging: 'Staging',
+  prod: 'Prod',
+};
+
 export const ROLE_LABELS: Record<Role, string> = {
   compliance_analyst: 'Compliance Analyst',
   support_agent: 'Support Agent',

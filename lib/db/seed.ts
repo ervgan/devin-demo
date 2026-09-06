@@ -368,25 +368,40 @@ const REFUNDS: RefundFixture[] = [
   { ref: 'RFD-5016', customerId: 'cus_castille', amountCents: 62000, reasonCode: 'service_not_received', status: 'under_review', requestedById: 'usr_priya', firstApproverId: null, secondApproverId: null, rejectionReason: null, createdHoursAgo: 20 },
 ];
 
-const FLAGS: { key: string; description: string; values: Record<'dev' | 'staging' | 'prod', boolean> }[] = [
+const FLAGS: {
+  key: string;
+  description: string;
+  owner: string;
+  values: Record<'dev' | 'staging' | 'prod', boolean>;
+}[] = [
   {
     key: 'kyc.enhanced_due_diligence',
     description: 'Route high-risk cases through the enhanced due diligence checklist.',
+    owner: 'Compliance',
     values: { dev: true, staging: true, prod: false },
   },
   {
     key: 'kyc.bulk_assignment',
     description: 'Allow reviewers to be assigned to several cases at once.',
+    owner: 'Compliance',
     values: { dev: true, staging: false, prod: false },
   },
   {
     key: 'refunds.second_approver',
     description: 'Require a second approver above the refund threshold.',
+    owner: 'Payments',
     values: { dev: true, staging: true, prod: true },
+  },
+  {
+    key: 'refunds.require_kyc_approval',
+    description: 'Require an approved KYC case on the customer before a refund is approved.',
+    owner: 'Compliance',
+    values: { dev: false, staging: false, prod: false },
   },
   {
     key: 'platform.dev_user_switcher',
     description: 'Expose the development-only actor switcher in the nav shell.',
+    owner: 'Platform',
     values: { dev: true, staging: false, prod: false },
   },
 ];
@@ -569,6 +584,7 @@ export function seedDatabase(db: DatabaseWriter): void {
           id: `flg_${flagIndex + 1}_${envIndex + 1}`,
           key: flag.key,
           description: flag.description,
+          owner: flag.owner,
           environment,
           enabled: flag.values[environment],
           updatedAt: at(-24),
