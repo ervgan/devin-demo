@@ -368,6 +368,25 @@ ul.plain {
   border-bottom: none;
 }
 
+.flag-toggle {
+  display: inline-flex;
+}
+
+button.toggle {
+  min-width: 56px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  background: #f2f4f7;
+  color: var(--muted);
+}
+
+button.toggle.on {
+  background: var(--success-soft);
+  border-color: #bcd9c8;
+  color: var(--success);
+}
+
 .notice {
   border-radius: var(--radius);
   padding: 10px 12px;

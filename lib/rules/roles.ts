@@ -11,7 +11,8 @@ export function requireRole(actor: Actor, roles: Role[], activity: string): Rule
     return allow(`${ROLE_LABELS[actor.role]} may ${activity}.`);
   }
   const permitted = roles.map((role) => ROLE_LABELS[role]).join(' or ');
-  return deny(`Only a ${permitted} may ${activity}. ${ROLE_LABELS[actor.role]} may not.`);
+  const article = /^[AEIOU]/.test(permitted) ? 'an' : 'a';
+  return deny(`Only ${article} ${permitted} may ${activity}. ${ROLE_LABELS[actor.role]} may not.`);
 }
 
 export function isComplianceAnalyst(actor: Actor): boolean {

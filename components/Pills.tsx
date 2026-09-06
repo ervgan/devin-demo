@@ -16,6 +16,12 @@ export function DocumentStatusPill({ status }: { status: DocumentStatus }) {
   );
 }
 
+export function FlagStatePill({ enabled }: { enabled: boolean }) {
+  return (
+    <span className={`pill ${enabled ? 'risk-low' : ''}`}>{enabled ? 'On' : 'Off'}</span>
+  );
+}
+
 export function formatDateTime(value: Date): string {
   return new Intl.DateTimeFormat('en-GB', {
     dateStyle: 'medium',
