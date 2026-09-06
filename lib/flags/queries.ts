@@ -2,8 +2,8 @@ import { asc } from 'drizzle-orm';
 import { getDb } from '@/lib/db/client';
 import { featureFlags } from '@/lib/db/schema';
 import { listAuditEntriesForEntity, type AuditEntryView } from '@/lib/audit';
-import { ENVIRONMENTS, type Environment } from '@/lib/rules/types';
-import type { FlagValueSnapshot } from '@/lib/rules';
+import { ENVIRONMENTS, type Actor, type Environment } from '@/lib/rules/types';
+import { canViewAuditHistory, type FlagValueSnapshot } from '@/lib/rules';
 
 export const FLAG_ENTITY_TYPE = 'feature_flag';
 
@@ -65,12 +65,14 @@ export async function listFlags(): Promise<FlagListItem[]> {
   return groupByKey(rows);
 }
 
-export async function getFlagDetail(key: string): Promise<FlagDetail | null> {
+export async function getFlagDetail(key: string, reader: Actor): Promise<FlagDetail | null> {
   const db = getDb();
   const rows = await db.select().from(featureFlags).orderBy(asc(featureFlags.key));
   const flag = groupByKey(rows).find((candidate) => candidate.key === key);
   if (!flag) return null;
 
-  const history = await listAuditEntriesForEntity(db, FLAG_ENTITY_TYPE, key);
+  const history = canViewAuditHistory(reader).allowed
+    ? await listAuditEntriesForEntity(db, FLAG_ENTITY_TYPE, key)
+    : [];
   return { ...flag, history };
 }

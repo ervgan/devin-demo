@@ -4,7 +4,7 @@ import { FlagToggle } from '@/components/FlagToggle';
 import { FlagStatePill, formatDateTime } from '@/components/Pills';
 import { getFlagDetail } from '@/lib/flags/queries';
 import { getCurrentActor, listUsers } from '@/lib/session';
-import { flagStateLabel, mayEditFlags } from '@/lib/rules';
+import { canViewAuditHistory, flagStateLabel, mayEditFlags } from '@/lib/rules';
 import { ENVIRONMENT_LABELS, ENVIRONMENTS, type Environment } from '@/lib/rules/types';
 
 export const dynamic = 'force-dynamic';
@@ -31,15 +31,13 @@ function describeValue(value: boolean | null): string {
 
 export default async function FlagDetailPage({ params, searchParams }: PageProps) {
   const key = decodeURIComponent(params.flagKey);
-  const [flag, actor, users] = await Promise.all([
-    getFlagDetail(key),
-    getCurrentActor(),
-    listUsers(),
-  ]);
+  const [actor, users] = await Promise.all([getCurrentActor(), listUsers()]);
+  const flag = await getFlagDetail(key, actor);
 
   if (!flag) notFound();
 
   const editing = mayEditFlags(actor);
+  const auditAccess = canViewAuditHistory(actor);
   const returnTo = `/flags/${encodeURIComponent(flag.key)}`;
 
   return (
@@ -104,6 +102,7 @@ export default async function FlagDetailPage({ params, searchParams }: PageProps
             </table>
           </section>
 
+          {auditAccess.allowed ? (
           <section className="card">
             <h2>Change history</h2>
             <table>
@@ -143,6 +142,7 @@ export default async function FlagDetailPage({ params, searchParams }: PageProps
               </tbody>
             </table>
           </section>
+          ) : null}
         </div>
 
         <section className="card">
