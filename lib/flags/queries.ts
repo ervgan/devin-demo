@@ -71,7 +71,7 @@ export async function getFlagDetail(key: string, reader: Actor): Promise<FlagDet
   const flag = groupByKey(rows).find((candidate) => candidate.key === key);
   if (!flag) return null;
 
-  const history = canViewAuditHistory(reader).allowed
+  const history = canViewAuditHistory(reader, { domain: 'flags' }).allowed
     ? await listAuditEntriesForEntity(db, FLAG_ENTITY_TYPE, key)
     : [];
   return { ...flag, history };

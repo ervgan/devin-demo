@@ -37,7 +37,7 @@ export default async function FlagDetailPage({ params, searchParams }: PageProps
   if (!flag) notFound();
 
   const editing = mayEditFlags(actor);
-  const auditAccess = canViewAuditHistory(actor);
+  const auditAccess = canViewAuditHistory(actor, { domain: 'flags' });
   const returnTo = `/flags/${encodeURIComponent(flag.key)}`;
 
   return (
@@ -142,7 +142,12 @@ export default async function FlagDetailPage({ params, searchParams }: PageProps
               </tbody>
             </table>
           </section>
-          ) : null}
+          ) : (
+          <section className="card">
+            <h2>Change history</h2>
+            <p className="muted">{auditAccess.reason}</p>
+          </section>
+          )}
         </div>
 
         <section className="card">
