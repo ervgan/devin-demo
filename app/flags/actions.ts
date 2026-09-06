@@ -8,11 +8,18 @@ import { getCurrentActor } from '@/lib/session';
 import { deny, type RuleResult } from '@/lib/rules';
 import { ENVIRONMENTS } from '@/lib/rules/types';
 
+/** Only flag screens are valid return targets, so a crafted form cannot redirect off-site. */
+function safeReturnTo(value: FormDataEntryValue | null, key: string): string {
+  const candidate = typeof value === 'string' ? value : '';
+  const detail = `/flags/${encodeURIComponent(key)}`;
+  return candidate === detail || candidate === '/flags' ? candidate : '/flags';
+}
+
 export async function setFlagValueAction(formData: FormData): Promise<void> {
   const key = String(formData.get('key'));
   const environment = ENVIRONMENTS.find((value) => value === formData.get('environment'));
   const enabled = formData.get('enabled') === 'on';
-  const returnTo = String(formData.get('returnTo') ?? '/flags');
+  const returnTo = safeReturnTo(formData.get('returnTo'), key);
 
   let result: RuleResult;
   if (!environment) {

@@ -40,13 +40,19 @@ export async function setFlagValue(
   if (!decision.allowed) return decision;
 
   // The value write and its audit entry share one transaction, and the row is
-  // updated only while it still holds the value the rule was evaluated against.
+  // updated only while it still matches the state the rule was evaluated against.
   return db.transaction((tx) => {
     const now = new Date();
     const updated = tx
       .update(featureFlags)
       .set({ enabled, updatedAt: now })
-      .where(and(eq(featureFlags.id, row.id), eq(featureFlags.enabled, row.enabled)))
+      .where(
+        and(
+          eq(featureFlags.id, row.id),
+          eq(featureFlags.enabled, row.enabled),
+          eq(featureFlags.updatedAt, row.updatedAt),
+        ),
+      )
       .run();
 
     if (updated.changes === 0) return deny(FLAG_CHANGED);
