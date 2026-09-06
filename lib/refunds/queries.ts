@@ -1,5 +1,5 @@
 import { and, desc, eq, gte, lt, ne, type SQL } from 'drizzle-orm';
-import { getDb, type AppDatabase } from '@/lib/db/client';
+import { getDb, type AppDatabase, type DatabaseWriter } from '@/lib/db/client';
 import {
   customers,
   refundEvents,
@@ -8,7 +8,7 @@ import {
   users,
 } from '@/lib/db/schema';
 import { listAuditEntriesForEntity, type AuditEntryView } from '@/lib/audit';
-import { isFlagEnabled } from '@/lib/flags/queries';
+import { isFlagEnabledSync } from '@/lib/flags/queries';
 import { getKycSummaryForCustomer, type CustomerKycSummary } from '@/lib/kyc/queries';
 import {
   canViewAuditHistory,
@@ -36,14 +36,28 @@ export const REFUND_ENTITY_TYPE = 'refund_request';
  * module and the KYC position from the shared customers row; nothing is stored
  * on the refund, so the outcome tracks both the moment they change.
  */
-export async function loadRefundApprovalContext(
-  db: AppDatabase,
+export function loadRefundApprovalContext(
+  db: DatabaseWriter,
   customerKycStatus: KycStatus,
-): Promise<RefundApprovalContext> {
+): RefundApprovalContext {
   return {
-    requireKycApproval: await isFlagEnabled(db, REQUIRE_KYC_APPROVAL_FLAG),
+    requireKycApproval: isFlagEnabledSync(db, REQUIRE_KYC_APPROVAL_FLAG),
     customerKycStatus,
   };
+}
+
+/** Same context, read from the customer row at call time (usable inside a transaction). */
+export function loadRefundApprovalContextForCustomer(
+  db: DatabaseWriter,
+  customerId: string,
+): RefundApprovalContext | null {
+  const row = db
+    .select({ kycStatus: customers.kycStatus })
+    .from(customers)
+    .where(eq(customers.id, customerId))
+    .limit(1)
+    .get();
+  return row ? loadRefundApprovalContext(db, row.kycStatus) : null;
 }
 
 /** Refund value still owed to customers: everything not settled or rejected. */
@@ -212,10 +226,8 @@ export async function listRefunds(filters: RefundFilters = {}): Promise<RefundLi
     .innerJoin(customers, eq(refundRequests.customerId, customers.id))
     .innerJoin(users, eq(refundRequests.requestedById, users.id));
 
-  const [rows, requireKycApproval] = await Promise.all([
-    conditions.length > 0 ? query.where(and(...conditions)) : query,
-    isFlagEnabled(db, REQUIRE_KYC_APPROVAL_FLAG),
-  ]);
+  const rows = await (conditions.length > 0 ? query.where(and(...conditions)) : query);
+  const requireKycApproval = isFlagEnabledSync(db, REQUIRE_KYC_APPROVAL_FLAG);
 
   // Case-insensitive matching is done here rather than in SQL: LIKE differs in
   // case sensitivity between SQLite and Postgres, and the queue is small.

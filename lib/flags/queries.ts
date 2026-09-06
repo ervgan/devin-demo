@@ -1,5 +1,5 @@
 import { and, asc, eq } from 'drizzle-orm';
-import { getDb, type AppDatabase } from '@/lib/db/client';
+import { getDb, type AppDatabase, type DatabaseWriter } from '@/lib/db/client';
 import { featureFlags } from '@/lib/db/schema';
 import { listAuditEntriesForEntity, type AuditEntryView } from '@/lib/audit';
 import { ENVIRONMENTS, type Actor, type Environment } from '@/lib/rules/types';
@@ -16,17 +16,26 @@ export function currentEnvironment(): Environment {
  * The only way another module learns a flag value. A flag missing from the
  * environment is off, so behaviour behind an unknown flag stays dormant.
  */
+export function isFlagEnabledSync(
+  db: DatabaseWriter,
+  key: string,
+  environment: Environment = currentEnvironment(),
+): boolean {
+  const row = db
+    .select({ enabled: featureFlags.enabled })
+    .from(featureFlags)
+    .where(and(eq(featureFlags.key, key), eq(featureFlags.environment, environment)))
+    .limit(1)
+    .get();
+  return row?.enabled ?? false;
+}
+
 export async function isFlagEnabled(
   db: AppDatabase,
   key: string,
   environment: Environment = currentEnvironment(),
 ): Promise<boolean> {
-  const [row] = await db
-    .select({ enabled: featureFlags.enabled })
-    .from(featureFlags)
-    .where(and(eq(featureFlags.key, key), eq(featureFlags.environment, environment)))
-    .limit(1);
-  return row?.enabled ?? false;
+  return isFlagEnabledSync(db, key, environment);
 }
 
 export interface FlagEnvironmentValue {

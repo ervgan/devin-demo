@@ -1,6 +1,6 @@
 import { and, eq, isNull } from 'drizzle-orm';
 import { recordAuditEntriesSync } from '@/lib/audit';
-import type { AppDatabase } from '@/lib/db/client';
+import type { AppDatabase, DatabaseWriter } from '@/lib/db/client';
 import { customers, refundEvents, refundRequests } from '@/lib/db/schema';
 import {
   canAddRefundNote,
@@ -14,7 +14,11 @@ import {
   type RefundSnapshot,
   type RuleResult,
 } from '@/lib/rules';
-import { loadRefundApprovalContext, REFUND_ENTITY_TYPE } from './queries';
+import {
+  loadRefundApprovalContext,
+  loadRefundApprovalContextForCustomer,
+  REFUND_ENTITY_TYPE,
+} from './queries';
 import type { Actor, RefundEventType, RefundStatus } from '@/lib/rules/types';
 
 /**
@@ -24,6 +28,7 @@ import type { Actor, RefundEventType, RefundStatus } from '@/lib/rules/types';
 
 interface LoadedRefund {
   id: string;
+  customerId: string;
   modifiedAt: Date;
   snapshot: RefundSnapshot;
   approvalContext: RefundApprovalContext;
@@ -41,8 +46,9 @@ async function loadRefund(db: AppDatabase, refundId: string): Promise<LoadedRefu
 
   return {
     id: row.id,
+    customerId: row.customerId,
     modifiedAt: row.modifiedAt,
-    approvalContext: await loadRefundApprovalContext(db, found.customerKycStatus),
+    approvalContext: loadRefundApprovalContext(db, found.customerKycStatus),
     snapshot: {
       refundRef: row.refundRef,
       status: row.status,
@@ -75,6 +81,9 @@ const REFUND_CHANGED =
  * Persists a decision. The refund row is updated only while it still matches
  * the state the rule was evaluated against, and refund, timeline and audit
  * writes share one transaction so a failure leaves no partial history.
+ * `reevaluate` re-runs the rule inside the transaction against state that
+ * lives outside the refund row (flag value, customer KYC), so a change made
+ * between the read and the write is honoured rather than overwritten.
  */
 function applyDecision(
   db: AppDatabase,
@@ -82,8 +91,14 @@ function applyDecision(
   loaded: LoadedRefund,
   write: RefundWrite,
   decision: RuleResult,
+  reevaluate?: (tx: DatabaseWriter) => RuleResult,
 ): RuleResult {
   return db.transaction((tx) => {
+    if (reevaluate) {
+      const current = reevaluate(tx);
+      if (!current.allowed) return current;
+    }
+
     const now = new Date();
     const before = {
       status: loaded.snapshot.status,
@@ -152,6 +167,11 @@ export async function approveRefund(
   const decision = canApproveRefund(actor, loaded.snapshot, loaded.approvalContext);
   if (!decision.allowed) return decision;
 
+  const reevaluate = (tx: DatabaseWriter): RuleResult => {
+    const context = loadRefundApprovalContextForCustomer(tx, loaded.customerId);
+    return context ? canApproveRefund(actor, loaded.snapshot, context) : deny(REFUND_NOT_FOUND);
+  };
+
   const secondApprovalOutstanding = isAwaitingSecondApproval(loaded.snapshot);
 
   if (requiresSecondApproval(loaded.snapshot) && !secondApprovalOutstanding) {
@@ -166,6 +186,7 @@ export async function approveRefund(
         action: 'refund.first_approval_recorded',
       },
       decision,
+      reevaluate,
     );
   }
 
@@ -185,6 +206,7 @@ export async function approveRefund(
       action: 'refund.approved',
     },
     decision,
+    reevaluate,
   );
 }
 
