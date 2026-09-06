@@ -9,8 +9,8 @@ export interface FlagValueSnapshot {
   enabled: boolean;
 }
 
-/** Flags are engineering configuration, whoever owns the behaviour behind them. */
-const FLAG_EDITOR_ROLES = ['engineer'] as const;
+/** Flag values are administrator-only, whichever team owns the behaviour behind them. */
+const FLAG_EDITOR_ROLES = ['admin'] as const;
 
 export function flagStateLabel(enabled: boolean): string {
   return enabled ? 'on' : 'off';

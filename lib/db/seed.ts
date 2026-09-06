@@ -35,6 +35,7 @@ const USERS: { id: string; name: string; email: string; role: Role }[] = [
   { id: 'usr_liu', name: 'Liu Chen', email: 'liu.chen@example.com', role: 'compliance_analyst' },
   { id: 'usr_priya', name: 'Priya Raman', email: 'priya.raman@example.com', role: 'support_agent' },
   { id: 'usr_tom', name: 'Tom Becker', email: 'tom.becker@example.com', role: 'engineer' },
+  { id: 'usr_nadia', name: 'Nadia Faraj', email: 'nadia.faraj@example.com', role: 'admin' },
 ];
 
 const INDIVIDUAL_DOCUMENTS = [

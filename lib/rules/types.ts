@@ -3,7 +3,7 @@
  * Values are the exact strings persisted in the database.
  */
 
-export const ROLES = ['compliance_analyst', 'support_agent', 'engineer'] as const;
+export const ROLES = ['compliance_analyst', 'support_agent', 'engineer', 'admin'] as const;
 export type Role = (typeof ROLES)[number];
 
 export const WORKFLOW_STAGES = ['capture', 'enrichment', 'due_diligence', 'fulfilment'] as const;
@@ -84,4 +84,5 @@ export const ROLE_LABELS: Record<Role, string> = {
   compliance_analyst: 'Compliance Analyst',
   support_agent: 'Support Agent',
   engineer: 'Engineer',
+  admin: 'Admin',
 };
