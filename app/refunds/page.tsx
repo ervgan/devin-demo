@@ -46,6 +46,10 @@ function parseFilters(params: SearchParams): RefundFilters {
   };
 }
 
+function filterKey(params: SearchParams): string {
+  return [params.q, params.status, params.reason, params.band].join('|');
+}
+
 function SortableHeader({
   field,
   label,
@@ -101,7 +105,8 @@ export default async function RefundsPage({ searchParams }: { searchParams: Sear
         </div>
       </section>
 
-      <form className="filters" method="get">
+      {/* Keyed on the query so a Reset clears the controls, not just the results. */}
+      <form key={filterKey(searchParams)} className="filters" method="get">
         <label className="field">
           Search
           <input
