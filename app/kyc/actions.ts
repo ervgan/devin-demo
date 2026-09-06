@@ -9,6 +9,7 @@ import {
   assignReviewer,
   rejectCase,
   requestInformation,
+  verifyDocument,
 } from '@/lib/kyc/service';
 import { getCurrentActor } from '@/lib/session';
 import type { RuleResult } from '@/lib/rules';
@@ -44,6 +45,12 @@ export async function assignReviewerAction(formData: FormData): Promise<void> {
   const caseId = String(formData.get('caseId'));
   const reviewerId = String(formData.get('reviewerId') ?? '');
   await run(caseId, (db, actor) => assignReviewer(db, actor, caseId, reviewerId));
+}
+
+export async function verifyDocumentAction(formData: FormData): Promise<void> {
+  const caseId = String(formData.get('caseId'));
+  const documentId = String(formData.get('documentId') ?? '');
+  await run(caseId, (db, actor) => verifyDocument(db, actor, caseId, documentId));
 }
 
 export async function approveCaseAction(formData: FormData): Promise<void> {

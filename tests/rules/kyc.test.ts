@@ -5,6 +5,8 @@ import {
   canAssignReviewer,
   canRejectCase,
   canRequestInformation,
+  canReviewCases,
+  canVerifyDocument,
   isTerminalStage,
   mayAssignReviewer,
   mayRejectCase,
@@ -197,6 +199,56 @@ describe('canAssignReviewer', () => {
     const result = canAssignReviewer(engineer, snapshot(), analyst);
     expect(result.allowed).toBe(false);
     expect(result.reason).toContain('Engineer may not');
+  });
+});
+
+describe('canReviewCases', () => {
+  it('allows a compliance analyst', () => {
+    expect(canReviewCases(analyst).allowed).toBe(true);
+  });
+
+  it('denies support agents and engineers', () => {
+    expect(canReviewCases(agent).allowed).toBe(false);
+    expect(canReviewCases(engineer).allowed).toBe(false);
+  });
+});
+
+describe('canVerifyDocument', () => {
+  const missing = { documentType: 'Source of Funds', status: 'missing' } as const;
+
+  it('allows a compliance analyst to verify a missing document on an open case', () => {
+    const result = canVerifyDocument(analyst, snapshot({ documents: [missing] }), missing);
+    expect(result.allowed).toBe(true);
+    expect(result.reason).toContain('Source of Funds');
+  });
+
+  it('denies a support agent', () => {
+    const result = canVerifyDocument(agent, snapshot({ documents: [missing] }), missing);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('Support Agent may not');
+  });
+
+  it('denies an engineer', () => {
+    expect(canVerifyDocument(engineer, snapshot({ documents: [missing] }), missing).allowed).toBe(
+      false,
+    );
+  });
+
+  it('denies a document that is already verified', () => {
+    const verified = { documentType: 'Government ID', status: 'verified' } as const;
+    const result = canVerifyDocument(analyst, snapshot(), verified);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('already verified');
+  });
+
+  it('denies on a decided case', () => {
+    const result = canVerifyDocument(
+      analyst,
+      snapshot({ stage: 'rejected', documents: [missing] }),
+      missing,
+    );
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('can no longer have documents verified');
   });
 });
 

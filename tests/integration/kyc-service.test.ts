@@ -17,6 +17,7 @@ import {
   assignReviewer,
   rejectCase,
   requestInformation,
+  verifyDocument,
 } from '@/lib/kyc/service';
 import type { Actor } from '@/lib/rules/types';
 
@@ -214,6 +215,93 @@ describe('rejectCase', () => {
   it('denies acting on an already decided case', async () => {
     const caseId = await caseIdByRef('KYC-2053');
     const result = await rejectCase(db, analyst, caseId, 'Duplicate rejection attempt');
+    expect(result.allowed).toBe(false);
+  });
+});
+
+describe('verifyDocument', () => {
+  async function missingDocumentOf(caseId: string) {
+    const rows = await db.select().from(kycDocuments).where(eq(kycDocuments.caseId, caseId));
+    const document = rows.find((row) => row.status === 'missing');
+    if (!document) throw new Error('Fixture case has no missing document');
+    return document;
+  }
+
+  it('verifies a document, stamping the verifier and recording history', async () => {
+    const caseId = await caseIdByRef('KYC-2045');
+    const document = await missingDocumentOf(caseId);
+    const audits = await auditCount(caseId);
+
+    const result = await verifyDocument(db, analyst, caseId, document.id);
+
+    expect(result.allowed).toBe(true);
+    const [row] = await db
+      .select()
+      .from(kycDocuments)
+      .where(eq(kycDocuments.id, document.id))
+      .limit(1);
+    expect(row!.status).toBe('verified');
+    expect(row!.verifiedById).toBe(analyst.id);
+    expect(row!.verifiedAt).not.toBeNull();
+    expect(await auditCount(caseId)).toBe(audits + 1);
+
+    const events = await db.select().from(kycCaseEvents).where(eq(kycCaseEvents.caseId, caseId));
+    expect(events.some((event) => event.type === 'document_verified')).toBe(true);
+  });
+
+  it('unblocks advancing out of Due Diligence once the checklist is complete', async () => {
+    const caseId = await caseIdByRef('KYC-2045');
+    expect((await advanceCase(db, analyst, caseId)).allowed).toBe(false);
+
+    const document = await missingDocumentOf(caseId);
+    await verifyDocument(db, analyst, caseId, document.id);
+
+    expect((await advanceCase(db, analyst, caseId)).allowed).toBe(true);
+    expect(await stageOf(caseId)).toBe('fulfilment');
+  });
+
+  it('denies a support agent and leaves the document missing', async () => {
+    const caseId = await caseIdByRef('KYC-2045');
+    const document = await missingDocumentOf(caseId);
+    const audits = await auditCount(caseId);
+
+    const result = await verifyDocument(db, agent, caseId, document.id);
+
+    expect(result.allowed).toBe(false);
+    const [row] = await db
+      .select()
+      .from(kycDocuments)
+      .where(eq(kycDocuments.id, document.id))
+      .limit(1);
+    expect(row!.status).toBe('missing');
+    expect(await auditCount(caseId)).toBe(audits);
+  });
+
+  it('denies verifying twice', async () => {
+    const caseId = await caseIdByRef('KYC-2045');
+    const document = await missingDocumentOf(caseId);
+    await verifyDocument(db, analyst, caseId, document.id);
+
+    const result = await verifyDocument(db, analyst, caseId, document.id);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('already verified');
+  });
+
+  it('denies a document belonging to another case', async () => {
+    const caseId = await caseIdByRef('KYC-2045');
+    const otherCaseId = await caseIdByRef('KYC-2043');
+    const document = await missingDocumentOf(otherCaseId);
+
+    const result = await verifyDocument(db, analyst, caseId, document.id);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('Document not found');
+  });
+
+  it('denies verifying on a decided case', async () => {
+    const caseId = await caseIdByRef('KYC-2054');
+    const document = await missingDocumentOf(caseId);
+
+    const result = await verifyDocument(db, analyst, caseId, document.id);
     expect(result.allowed).toBe(false);
   });
 });
