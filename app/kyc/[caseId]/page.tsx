@@ -43,11 +43,8 @@ interface PageProps {
 }
 
 export default async function KycCasePage({ params, searchParams }: PageProps) {
-  const [detail, actor, users] = await Promise.all([
-    getCaseDetail(params.caseId),
-    getCurrentActor(),
-    listUsers(),
-  ]);
+  const [actor, users] = await Promise.all([getCurrentActor(), listUsers()]);
+  const detail = await getCaseDetail(params.caseId, actor);
 
   if (!detail) notFound();
 

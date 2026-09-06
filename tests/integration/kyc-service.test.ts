@@ -106,7 +106,12 @@ describe('advanceCase', () => {
 describe('requestInformation', () => {
   it('records the reason on the timeline', async () => {
     const caseId = await caseIdByRef('KYC-2043');
-    const result = await requestInformation(db, agent, caseId, 'Source of funds evidence missing');
+    const result = await requestInformation(
+      db,
+      analyst,
+      caseId,
+      'Source of funds evidence missing',
+    );
 
     expect(result.allowed).toBe(true);
     const events = await db.select().from(kycCaseEvents).where(eq(kycCaseEvents.caseId, caseId));
@@ -123,7 +128,7 @@ describe('requestInformation', () => {
     const caseId = await caseIdByRef('KYC-2043');
     const before = await auditCount(caseId);
 
-    const result = await requestInformation(db, agent, caseId, '');
+    const result = await requestInformation(db, analyst, caseId, '');
 
     expect(result.allowed).toBe(false);
     expect(await auditCount(caseId)).toBe(before);
@@ -133,7 +138,7 @@ describe('requestInformation', () => {
 describe('assignReviewer', () => {
   it('assigns a compliance analyst', async () => {
     const caseId = await caseIdByRef('KYC-2042');
-    const result = await assignReviewer(db, agent, caseId, otherAnalyst.id);
+    const result = await assignReviewer(db, analyst, caseId, otherAnalyst.id);
 
     expect(result.allowed).toBe(true);
     const [row] = await db.select().from(kycCases).where(eq(kycCases.id, caseId)).limit(1);

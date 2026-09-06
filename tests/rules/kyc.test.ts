@@ -87,8 +87,10 @@ describe('canAdvanceStage', () => {
     expect(result.reason).toContain('Enrichment');
   });
 
-  it('allows a support agent to advance an open case', () => {
-    expect(canAdvanceStage(agent, snapshot()).allowed).toBe(true);
+  it('denies a support agent, who works refunds rather than KYC', () => {
+    const result = canAdvanceStage(agent, snapshot());
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('Support Agent may not');
   });
 
   it('denies an engineer', () => {
@@ -135,8 +137,12 @@ describe('canAdvanceStage', () => {
 });
 
 describe('mayRequestInformation', () => {
-  it('allows a case worker on an open case', () => {
-    expect(mayRequestInformation(agent, snapshot()).allowed).toBe(true);
+  it('allows a compliance analyst on an open case', () => {
+    expect(mayRequestInformation(analyst, snapshot()).allowed).toBe(true);
+  });
+
+  it('denies a support agent', () => {
+    expect(mayRequestInformation(agent, snapshot()).allowed).toBe(false);
   });
 
   it('denies an engineer', () => {
@@ -173,8 +179,12 @@ describe('canRequestInformation', () => {
 });
 
 describe('mayAssignReviewer', () => {
-  it('allows a case worker on an open case', () => {
-    expect(mayAssignReviewer(agent, snapshot()).allowed).toBe(true);
+  it('allows a compliance analyst on an open case', () => {
+    expect(mayAssignReviewer(analyst, snapshot()).allowed).toBe(true);
+  });
+
+  it('denies a support agent', () => {
+    expect(mayAssignReviewer(agent, snapshot()).allowed).toBe(false);
   });
 
   it('denies on a decided case', () => {
@@ -184,7 +194,7 @@ describe('mayAssignReviewer', () => {
 
 describe('canAssignReviewer', () => {
   it('allows assigning to a compliance analyst', () => {
-    const result = canAssignReviewer(agent, snapshot(), otherAnalyst);
+    const result = canAssignReviewer(analyst, snapshot(), otherAnalyst);
     expect(result.allowed).toBe(true);
     expect(result.reason).toContain('Liu Chen');
   });
@@ -193,6 +203,12 @@ describe('canAssignReviewer', () => {
     const result = canAssignReviewer(analyst, snapshot(), engineer);
     expect(result.allowed).toBe(false);
     expect(result.reason).toContain('not a compliance analyst');
+  });
+
+  it('denies a support agent doing the assigning', () => {
+    const result = canAssignReviewer(agent, snapshot(), otherAnalyst);
+    expect(result.allowed).toBe(false);
+    expect(result.reason).toContain('Support Agent may not');
   });
 
   it('denies an engineer doing the assigning', () => {

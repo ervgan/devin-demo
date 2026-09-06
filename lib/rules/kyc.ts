@@ -25,8 +25,11 @@ export interface CaseSnapshot {
   documents: CaseDocument[];
 }
 
-/** Roles that may move a case through the workflow at all. */
-const CASE_WORKER_ROLES = ['compliance_analyst', 'support_agent'] as const;
+/**
+ * Roles that may move a case through the workflow at all. KYC is compliance
+ * work: support agents own refunds and never touch a case.
+ */
+const CASE_WORKER_ROLES = ['compliance_analyst'] as const;
 
 /** Roles that may take a final decision on a case. */
 const CASE_DECIDER_ROLES = ['compliance_analyst'] as const;

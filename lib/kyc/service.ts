@@ -248,6 +248,23 @@ export async function verifyDocument(
 
   return db.transaction((tx) => {
     const now = new Date();
+
+    // The case must still be in the state the rule saw, so a decision that
+    // commits in between cannot be followed by a verification.
+    const touched = tx
+      .update(kycCases)
+      .set({ modifiedAt: now })
+      .where(
+        and(
+          eq(kycCases.id, caseId),
+          eq(kycCases.stage, loaded.stage),
+          eq(kycCases.modifiedAt, loaded.modifiedAt),
+        ),
+      )
+      .run();
+
+    if (touched.changes === 0) return deny(CASE_CHANGED);
+
     const updated = tx
       .update(kycDocuments)
       .set({ status: 'verified', verifiedAt: now, verifiedById: actor.id })
@@ -255,8 +272,6 @@ export async function verifyDocument(
       .run();
 
     if (updated.changes === 0) return deny(`${document.documentType} is already verified.`);
-
-    tx.update(kycCases).set({ modifiedAt: now }).where(eq(kycCases.id, caseId)).run();
 
     tx.insert(kycCaseEvents)
       .values({
